@@ -1,63 +1,326 @@
+import logging
+
+from aiogram import BaseMiddleware, types
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Boolean, delete
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import relationship
+from sqlalchemy.future import select
+from typing import Callable, Dict, Any
+
+Base = declarative_base()
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(Integer, unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=False)
+    admin_id = Column(Integer, nullable=False)
+    is_active = Column(Boolean, default=True)
+
+    agenda_items = relationship("AgendaItem", back_populates="session")
+    participants = relationship("Participant", back_populates="session", cascade="all, delete-orphan")
+
+
+class AgendaItem(Base):
+    __tablename__ = "agenda_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    description = Column(Text, nullable=False)
+    position = Column(Integer, nullable=False)
+
+    session = relationship("Session", back_populates="agenda_items")
+    votes = relationship("Vote", back_populates="agenda_item")
+
+class Vote(Base):
+    __tablename__ = "votes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agenda_item_id = Column(Integer, ForeignKey("agenda_items.id"), nullable=False)
+    user_id = Column(Integer, nullable=False)
+    vote = Column(String(10), nullable=False)  # "За", "Проти", "Утримаюсь"
+
+    agenda_item = relationship("AgendaItem", back_populates="votes")
+
+class Participant(Base):
+    __tablename__ = "participants"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    user_id = Column(Integer, nullable=False)
+
+    session = relationship("Session", back_populates="participants")
+
+
+# Database Utility Functions
 class Database:
-    def __init__(self):
-        self.sessions = {}
+    def __init__(self, session_factory):
+        self.session_factory = session_factory
 
-    def create_session(self, code, name, password, admin_id):
-        self.sessions[code] = {
-            "name": name,
-            "password": password,
-            "admin_id": admin_id,
-            "agenda": [],
-            "participants": {},
-            "votes": {},
-            "current_question": 0
-        }
+    async def add_session(self, session_code, session_name, session_password, admin_id):
+        async with self.session_factory() as session:
+            # Перевіряємо, чи вже є активна сесія
+            result = await session.execute(
+                select(Session).where(Session.admin_id == admin_id, Session.is_active == True)
+            )
+            active_session = result.scalars().first()
+            if active_session:
+                # logging.warning(f"У адміністратора {admin_id} вже є активна сесія.")
+                active_session.is_active = False
+                await session.commit()
+                logging.warning(f"У адміністратора {admin_id} вже є активна сесія з кодом {active_session.code}. Завершуємо її.")
 
-    def get_session(self, code):
-        return self.sessions.get(code)
+                # raise Exception("У вас вже була активна сесія. Ми завершили її, перш ніж створювати нову.")
 
-    def get_session_by_admin(self, admin_id):
-        for session in self.sessions.values():
-            if session["admin_id"] == admin_id:
-                return session
-        return None
+            # Створюємо нову сесію
+            new_session = Session(
+                code=session_code,
+                name=session_name,
+                password=session_password,
+                admin_id=admin_id
+            )
+            session.add(new_session)
+            await session.commit()
 
-    def add_participant(self, code, user_id, name):
-        if code in self.sessions:
-            self.sessions[code]["participants"][user_id] = name
+    async def set_session_agenda(self, session_code, agenda):
+        async with self.session_factory() as session:
+            # Знаходимо сесію за кодом
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if session_obj:
+                # Видаляємо старі пункти порядку денного
+                await session.execute(
+                    delete(AgendaItem).where(AgendaItem.session_id == session_obj.id)
+                )
+                # Додаємо нові пункти порядку денного
+                for position, description in enumerate(agenda, start=1):
+                    new_item = AgendaItem(
+                        session_id=session_obj.id,
+                        description=description,
+                        position=position
+                    )
+                    session.add(new_item)
+                await session.commit()
 
-    def update_agenda(self, code, agenda):
-        if code in self.sessions:
-            self.sessions[code]["agenda"] = agenda
+    async def start_voting(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if session_obj:
+                session_obj.is_active = True
+                await session.commit()
 
-    def save_vote(self, code, question, user_id, vote):
-        if code in self.sessions:
-            self.sessions[code]["votes"].setdefault(question, []).append({user_id: vote})
+    async def end_session(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if session_obj:
+                session_obj.is_active = False
+                results = {}
 
-    def all_votes_received(self, code, question):
-        if code in self.sessions:
-            participants = self.sessions[code]["participants"]
-            votes = self.sessions[code]["votes"].get(question, [])
-            voted_users = {list(vote.keys())[0] for vote in votes}
-            return len(voted_users) == len(participants)
+                # Отримуємо пов'язані agenda_items через асинхронний запит
+                agenda_result = await session.execute(
+                    select(AgendaItem).where(AgendaItem.session_id == session_obj.id)
+                )
+                agenda_items = agenda_result.scalars().all()
 
-    def get_results_for_question(self, code, question):
-        if code in self.sessions:
-            votes = self.sessions[code]["votes"].get(question, [])
-            results = {"За": 0, "Проти": 0, "Утримався": 0}
+                # Обробляємо голосування для кожного пункту порядку денного
+                for item in agenda_items:
+                    votes_result = await session.execute(
+                        select(Vote).where(Vote.agenda_item_id == item.id)
+                    )
+                    votes = votes_result.scalars().all()
+
+                    vote_counts = {"for": 0, "against": 0, "abstain": 0}
+                    for vote in votes:
+                        if vote.vote == "За":
+                            vote_counts["for"] += 1
+                        elif vote.vote == "Проти":
+                            vote_counts["against"] += 1
+                        elif vote.vote == "Утримаюсь":
+                            vote_counts["abstain"] += 1
+                    results[item.description] = vote_counts
+
+                await session.commit()
+                return results
+
+    async def get_admin_session(self, admin_id):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.admin_id == admin_id, Session.is_active == True)
+            )
+            session_obj = result.scalars().first()  # Повертає перший рядок або None
+            if session_obj is None:
+                logging.warning(f"Сесія для admin_id {admin_id} не знайдена")
+            return session_obj.code if session_obj else None
+
+    async def get_session_agenda(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if session_obj:
+                # Отримуємо пов'язані agenda_items через асинхронний запит
+                agenda_result = await session.execute(
+                    select(AgendaItem).where(AgendaItem.session_id == session_obj.id)
+                )
+                agenda_items = agenda_result.scalars().all()
+                return [item.description for item in agenda_items]
+            return []
+
+    async def add_vote(self, session_code, user_id, question, vote):
+        """
+        Додає голос учасника до бази даних.
+        :param session_code: Код сесії.
+        :param user_id: ID користувача.
+        :param question: Питання, за яке голосують.
+        :param vote: Варіант голосу ("За", "Проти", "Утримався").
+        """
+        async with self.session_factory() as session:
+            # Знаходимо сесію за кодом
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if not session_obj:
+                logging.warning(f"Сесія з кодом {session_code} не знайдена для голосування.")
+                return
+
+            # Знаходимо пункт порядку денного
+            agenda_result = await session.execute(
+                select(AgendaItem).where(AgendaItem.session_id == session_obj.id, AgendaItem.description == question)
+            )
+            agenda_item = agenda_result.scalar_one_or_none()
+            if not agenda_item:
+                logging.warning(f"Питання '{question}' не знайдено в порядку денному сесії {session_code}.")
+                return
+
+            # Перевіряємо, чи користувач вже голосував за це питання
+            existing_vote_result = await session.execute(
+                select(Vote).where(Vote.agenda_item_id == agenda_item.id, Vote.user_id == user_id)
+            )
+            existing_vote = existing_vote_result.scalar_one_or_none()
+            if existing_vote:
+                logging.info(f"Користувач {user_id} вже голосував за питання '{question}'. Оновлюємо голос.")
+                # Оновлюємо існуючий голос
+                existing_vote.vote = vote
+            else:
+                # Додаємо новий голос
+                new_vote = Vote(
+                    agenda_item_id=agenda_item.id,
+                    user_id=user_id,
+                    vote=vote
+                )
+                session.add(new_vote)
+
+            # Зберігаємо зміни
+            await session.commit()
+            logging.info(f"Голос користувача {user_id} за питання '{question}' успішно збережено.")
+
+    async def check_all_votes_collected(self, session_code, question):
+        async with self.session_factory() as session:
+            # Знаходимо сесію
+            session_obj = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = session_obj.scalar_one_or_none()
+
+            if not session_obj:
+                return False
+
+            # Знаходимо пункт порядку денного
+            agenda_item_result = await session.execute(
+                select(AgendaItem).where(AgendaItem.session_id == session_obj.id, AgendaItem.description == question)
+            )
+            agenda_item = agenda_item_result.scalar_one_or_none()
+            if not agenda_item:
+                return False
+
+            # Отримуємо кількість учасників
+            participants_result = await session.execute(
+                select(Participant).where(Participant.session_id == session_obj.id)
+            )
+            total_participants = len(participants_result.scalars().all())
+
+            # Отримуємо кількість голосів
+            vote_count_result = await session.execute(
+                select(Vote).where(Vote.agenda_item_id == agenda_item.id)
+            )
+            total_votes = len(vote_count_result.scalars().all())
+            return total_votes >= total_participants
+
+    async def get_vote_results(self, session_code, question):
+        async with self.session_factory() as session:
+            # Знаходимо сесію
+            session_obj = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = session_obj.scalar_one_or_none()
+
+            if not session_obj:
+                return {}
+
+            # Знаходимо пункт порядку денного
+            agenda_item_result = await session.execute(
+                select(AgendaItem).where(AgendaItem.session_id == session_obj.id, AgendaItem.description == question)
+            )
+            agenda_item = agenda_item_result.scalar_one_or_none()
+            if not agenda_item:
+                return {}
+
+            # Підраховуємо голоси
+            vote_result = await session.execute(
+                select(Vote).where(Vote.agenda_item_id == agenda_item.id)
+            )
+            votes = vote_result.scalars().all()
+
+            vote_counts = {"За": 0, "Проти": 0, "Утримався": 0}
             for vote in votes:
-                for _, v in vote.items():
-                    results[v] += 1
-            return results
+                if vote.vote in vote_counts:
+                    vote_counts[vote.vote] += 1
 
-    def get_results(self, code):
-        if code in self.sessions:
-            agenda = self.sessions[code]["agenda"]
-            results = {}
-            for question in agenda:
-                results[question] = self.get_results_for_question(code, question)
-            return results
+            return vote_counts
 
-    def delete_session(self, code):
-        if code in self.sessions:
-            del self.sessions[code]
+    async def add_participant(self, session_code, user_id):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+            if not session_obj:
+                logging.warning(f"Сесія з кодом {session_code} не знайдена.")
+                return
+
+            # Перевіряємо, чи учасник вже доданий
+            participant_result = await session.execute(
+                select(Participant).where(Participant.session_id == session_obj.id, Participant.user_id == user_id)
+            )
+            participant = participant_result.scalar_one_or_none()
+            if participant:
+                logging.info(f"Користувач {user_id} вже є учасником сесії {session_code}.")
+                return
+
+            # Додаємо учасника
+            new_participant = Participant(session_id=session_obj.id, user_id=user_id)
+            session.add(new_participant)
+            await session.commit()
+            logging.info(f"Користувач {user_id} доданий до сесії {session_code}.")
+
+
+class DatabaseMiddleware(BaseMiddleware):
+    def __init__(self, db: Database):
+        super().__init__()
+        self.db = db
+
+    async def __call__(self, handler: Callable, event: types.Message, data: Dict[str, Any]) -> Any:
+        data['db'] = self.db
+        return await handler(event, data)
