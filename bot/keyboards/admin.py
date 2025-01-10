@@ -16,6 +16,7 @@ def session_control_kb():
     keyboard.add(
         KeyboardButton(text="🔄 Змінити порядок денний"),
         KeyboardButton(text="✅ Почати голосування по питаннях плану"),
+        KeyboardButton(text="ℹ️ Інформація про сесію"),
         KeyboardButton(text="❌ Завершити сесію")
     )
     return keyboard.adjust(1).as_markup(resize_keyboard=True)
@@ -26,7 +27,7 @@ def vote_kb():
     keyboard.add(
         KeyboardButton(text="За"),
         KeyboardButton(text="Проти"),
-        KeyboardButton(text="Утримався")
+        KeyboardButton(text="Утримаюсь")
     )
     return keyboard.adjust(1).as_markup(resize_keyboard=True)
 

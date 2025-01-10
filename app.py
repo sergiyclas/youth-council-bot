@@ -9,13 +9,17 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+from bot.common.commands import set_bot_commands, reset_bot_commands
 from bot.database.database import Database, Base, DatabaseMiddleware
 from bot.handlers.admin import admin_router
+from bot.handlers.common import common_router
+from bot.handlers.participant import participant_router
 from config import TELEGRAM_TOKEN, DATABASE_URL
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+# logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 # Ініціалізація Flask-сервера
 app = Flask(__name__)
 
@@ -25,7 +29,7 @@ def index():
 
 @app.route("/params", methods=["GET"])
 def get_params():
-    """Обробляє GET запити і повертає передані параметри."""
+    """Обробляє GET запити й повертає передані параметри."""
     params = request.args
     return jsonify({"parameters": params})
 
@@ -42,7 +46,10 @@ bot = Bot(
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 dp.message.middleware(DatabaseMiddleware(db))
+
 dp.include_router(admin_router)
+dp.include_router(common_router)
+dp.include_router(participant_router)
 
 async def create_tables():
     """Створює таблиці у базі даних."""
@@ -52,7 +59,12 @@ async def create_tables():
 
 async def run_bot():
     """Запускає Telegram-бота."""
-    logging.info("Telegram-бот запущено.")
+    # logging.info("Скидання існуючих команд...")
+    # await reset_bot_commands(bot)  # Скидаємо команди
+    await bot.delete_webhook(drop_pending_updates=True) # скидання закинутих повідомлень
+    logging.info("Встановлення команд для бота...")
+    await set_bot_commands(bot)  # Встановлюємо команди
+    logging.info("Команди встановлено. Telegram-бот запущено.")
     await dp.start_polling(bot)
 
 def start_bot():

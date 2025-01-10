@@ -1,55 +1,180 @@
-from aiogram import types, Dispatcher
-from aiogram.filters import StateFilter
+import logging
+
+from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
-from bot.keyboards.admin import voting_keyboard
+from aiogram.filters.state import StateFilter
+from aiogram.filters import Command
 
-class ParticipantState(StatesGroup):
-    session_code = State()
-    session_password = State()
-    name = State()
+from bot.keyboards.admin import admin_menu_kb
+from bot.keyboards.participant import participant_menu_kb
+from bot.database.database import Database
 
-async def join_session(message: types.Message, state: FSMContext, db):
-    if message.text == "Приєднатися до сесії":
-        await message.answer("Введіть код сесії:")
-        await state.set_state(ParticipantState.session_code)
+participant_router = Router()
 
-async def validate_code(message: types.Message, state: FSMContext, db):
-    session_code = message.text
-    session = db.get_session(session_code)
+class ParticipantStates:
+    entering_session_code = "entering_session_code"
+    entering_session_password = "entering_session_password"
+    entering_name = "entering_name"
+    voting = "voting"
+
+@participant_router.message(Command("join"))
+@participant_router.message(F.text == "Приєднатися до сесії")
+async def join_session(message: types.Message, state: FSMContext):
+    """
+    Учасник починає процес приєднання до сесії.
+    """
+    logging.info(f"Приєднання до сесії, користувач {message.from_user.id}")
+    await state.set_state(ParticipantStates.entering_session_code)
+    await message.answer("Введіть код сесії:")
+
+@participant_router.message(StateFilter(ParticipantStates.entering_session_code))
+async def handle_session_code(message: types.Message, state: FSMContext, db: Database):
+    """
+    Учасник вводить код сесії.
+    """
+    session_code = message.text.strip()
+    session = await db.get_session_by_code(session_code)
 
     if not session:
-        await message.answer("Сесія не знайдена. Введіть код ще раз або перевірте його.")
+        await message.answer("Сесія з таким кодом не знайдена. Спробуйте ще раз.")
         return
 
+    logging.info(f"Користувач {message.from_user.id} заходить до сесії {session_code}")
     await state.update_data(session_code=session_code)
-    await message.answer("Введіть пароль до сесії:")
-    await state.set_state(ParticipantState.session_password)
+    await state.set_state(ParticipantStates.entering_session_password)
+    await message.answer("Введіть пароль сесії:")
 
-async def validate_password(message: types.Message, state: FSMContext, db):
-    password = message.text
-    session_data = await state.get_data()
-    session_code = session_data["session_code"]
+@participant_router.message(StateFilter(ParticipantStates.entering_session_password))
+async def handle_session_password(message: types.Message, state: FSMContext, db: Database):
+    """
+    Учасник вводить пароль сесії.
+    """
+    data = await state.get_data()
+    session_code = data.get("session_code")
+    session = await db.get_session_by_code(session_code)
 
-    session = db.get_session(session_code)
-    if session["password"] != password:
+    if not session or session.password != message.text.strip():
         await message.answer("Неправильний пароль. Спробуйте ще раз.")
         return
 
-    await message.answer("Введіть ваше ім'я:")
-    await state.set_state(ParticipantState.name)
+    logging.info(f"Користувач {message.from_user.id} успішно приєднався до сесії {session_code}")
+    await state.set_state(ParticipantStates.entering_name)
+    await message.answer("Введіть своє ім'я:")
 
-async def save_participant(message: types.Message, state: FSMContext, db):
-    name = message.text
+@participant_router.message(StateFilter(ParticipantStates.entering_name))
+async def handle_name(message: types.Message, state: FSMContext, db: Database):
+    """
+    Учасник вводить своє ім'я.
+    """
+    user_name = message.text.strip()
+    data = await state.get_data()
+    session_code = data.get("session_code")
+
+    # Додаємо учасника до сесії з ім'ям
+    await db.add_participant(session_code=session_code, user_id=message.from_user.id, user_name=user_name)
+
+    # Зберігаємо session_code, session_name та user_name
+    session = await db.get_session_by_code(session_code)
+    await state.update_data(session_code=session.code, session_name=session.name, user_name=user_name)
+
+    await message.answer(
+        f"Ви успішно приєдналися до сесії <b>{session.name}</b> як <b>{user_name}</b>!",
+        parse_mode="HTML",
+        reply_markup=participant_menu_kb()
+    )
+
+@participant_router.message(Command("info"))
+@participant_router.message(F.text == "ℹ️ Інформація про сесію")
+async def session_info(message: types.Message, state: FSMContext, db: Database):
+    """
+    Учасник переглядає інформацію про сесію.
+    """
     session_data = await state.get_data()
-    session_code = session_data["session_code"]
+    logging.info(f"Дані стану для користувача {message.from_user.id}: {session_data}")
 
-    db.add_participant(session_code, message.from_user.id, name)
-    await message.answer("Ви приєдналися до сесії. Чекайте початку голосування.")
-    await state.clear()
+    session_code = session_data.get("session_code")
+    session_name = session_data.get("session_name")
 
-def register_participant_handlers(dp: Dispatcher, db):
-    dp.message.register(join_session, lambda message: message.text == "Приєднатися до сесії")
-    dp.message.register(validate_code, StateFilter(ParticipantState.session_code))
-    dp.message.register(validate_password, StateFilter(ParticipantState.session_password))
-    dp.message.register(save_participant, StateFilter(ParticipantState.name))
+    if not session_code or not session_name:
+        await message.answer("Помилка: Ви не перебуваєте в активній сесії.", reply_markup=admin_menu_kb())
+        return
+
+    # Отримуємо список учасників
+    participants = await db.get_session_participants_with_names(session_code)
+    participant_list = "\n".join([f"{i + 1}. {p['name']}" for i, p in enumerate(participants)])
+
+    # Отримуємо порядок денний
+    agenda = await db.get_session_agenda(session_code)
+    agenda_text = "\n".join([f"{i + 1}. {item}" for i, item in enumerate(agenda)])
+
+    await message.answer(
+        f"Інформація про сесію:\n"
+        f"🔑 Код: <code>{session_code}</code>\n"
+        f"📋 Назва: <b>{session_name}</b>\n\n"
+        f"Учасники:\n{participant_list}\n\n"
+        f"Порядок денний:\n{agenda_text}",
+        parse_mode="HTML"
+    )
+
+
+@participant_router.message(Command('leave'))
+@participant_router.message(F.text == "🚪 Вийти з сесії")
+async def leave_session(message: types.Message, state: FSMContext, db: Database):
+    """
+    Учасник залишає сесію.
+    """
+    # Отримуємо дані стану
+    session_data = await state.get_data()
+    session_code = session_data.get("session_code")
+    session_name = session_data.get("session_name")
+    user_id = message.from_user.id
+
+    if not session_code:
+        await message.answer("Помилка: Ви не перебуваєте в жодній сесії.")
+        return
+
+    admin_id = db.get_admin_id(session_code)
+    if user_id == admin_id:
+        session_data = await state.get_data()
+        session_name = session_data.get('session_name')
+
+        session_code = session_data.get("session_code")
+        if not session_code:
+            await message.answer("Помилка: сесія не знайдена.")
+            return
+
+        # Завершуємо сесію та отримуємо результати
+        results = await db.end_session(session_code)
+
+        # Форматуємо результати
+        results_text = "\n".join([
+            f"<b>{index + 1}. {question}</b>\nЗа: {votes['for']}, Проти: {votes['against']}, Утримались: {votes['abstain']}"
+            for index, (question, votes) in enumerate(results.items())
+        ])
+
+        participants = await db.get_session_participants(session_code)
+        for participant_id in participants:
+            await message.bot.send_message(
+                chat_id=participant_id,
+                text=f"Сесію <b>{session_name}</b> завершено. \nРезультати голосування:\n\n{results_text}",
+                parse_mode="HTML"
+            )
+
+        await message.answer(
+            f"Сесію <b>{session_name}</b> завершено. Результати розіслані всім учасникам.",
+            parse_mode="HTML", reply_markup=admin_menu_kb()
+        )
+        await state.clear()
+
+    else:
+        # Видаляємо учасника з бази даних
+        try:
+            await db.remove_participant(session_code=session_code, user_id=user_id)
+            await state.clear()
+            await message.answer(
+                f"Ви успішно вийшли із сесії <b>{session_name}</b> (код: {session_code}).",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+        except Exception as e:
+            logging.error(f"Помилка при спробі залишити сесію: {e}")
+            await message.answer("Виникла помилка при спробі залишити сесію. Спробуйте ще раз.")

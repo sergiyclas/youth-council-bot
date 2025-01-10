@@ -5,13 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d8cef056-9800-4861-bdb6-d76eb0e645bb" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/bot/common/commands.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/bot/keyboards/participant.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bot/common/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/common/utils.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/database/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/database/database.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/handlers/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/admin.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bot/handlers/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/common.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bot/handlers/participant.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/participant.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/keyboards/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/keyboards/admin.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bot/keyboards/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/keyboards/common.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -38,17 +42,19 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
-    "Python.app (1).executor": "Run",
-    "Python.app.executor": "Run",
-    "Python.main.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "C:/My_deals/Bots/YouthCouncilBot/bot/keyboards"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_MARK_IGNORED_FILES_AS_EXCLUDED&quot;: &quot;true&quot;,
+    &quot;Python.admin.executor&quot;: &quot;Run&quot;,
+    &quot;Python.app (1).executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.utils.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/My_deals/Bots/YouthCouncilBot/bot/keyboards&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\My_deals\Bots\YouthCouncilBot\bot\keyboards" />
