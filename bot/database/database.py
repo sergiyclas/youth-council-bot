@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import BaseMiddleware, types
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Boolean, delete, func
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Boolean, delete, func, BigInteger
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.future import select
@@ -50,7 +50,7 @@ class Participant(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(BigInteger, nullable=False)  # Змінено на BigInteger
     name = Column(String(255), nullable=False)
 
     session = relationship("Session", back_populates="participants")

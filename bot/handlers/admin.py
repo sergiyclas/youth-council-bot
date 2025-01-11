@@ -3,6 +3,9 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
+from aiogram.types import InputFile
+
+from bot.common.utils import generate_protocol, generate_attendance_list_full
 from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb
 from bot.database.database import Database
 from random import randint
@@ -370,6 +373,8 @@ async def next_question(message: types.Message, state: FSMContext, db: Database)
     await state.update_data(current_question_index=next_question_index)
 
 
+from aiogram.types import FSInputFile
+
 @admin_router.message(F.text == "❌ Завершити сесію")
 async def end_session(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
@@ -390,6 +395,27 @@ async def end_session(message: types.Message, state: FSMContext, db: Database):
         for index, (question, votes) in enumerate(results.items())
     ])
 
+    try:
+        # Генеруємо документи
+        protocol_path = await generate_protocol(session_code, db)
+        attendance_list_path = await generate_attendance_list_full(session_code, session_name, db)
+
+        protocol_file = FSInputFile(protocol_path)
+        await message.answer_document(
+            document=protocol_file
+        )
+
+        # Відправляємо список присутніх
+        attendance_file = FSInputFile(attendance_list_path)
+        await message.answer_document(
+            document=attendance_file
+        )
+
+    except Exception as e:
+        logging.error(f"Помилка під час генерації документів: {e}")
+        await message.answer(f"Сталася помилка під час генерації документів: {str(e)}")
+
+    # Надсилаємо результати голосування
     participants = await db.get_session_participants(session_code)
     for participant_id in participants:
         await message.bot.send_message(
