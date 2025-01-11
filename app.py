@@ -15,7 +15,8 @@ from bot.database.database import Database, Base, DatabaseMiddleware
 from bot.handlers.admin import admin_router
 from bot.handlers.common import common_router
 from bot.handlers.participant import participant_router
-from config import TELEGRAM_TOKEN, DATABASE_URL
+from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL
+import asyncpg
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +34,13 @@ def get_params():
     params = request.args
     return jsonify({"parameters": params})
 
-engine = create_async_engine(DATABASE_URL, future=True)
+choose = 'MySQL'
+if choose == 'MySQL':
+    DATABASE = DATABASE_URL
+else:
+    DATABASE = "postgres+asyncpg" + str(POSTGRESQL)
+
+engine = create_async_engine(DATABASE, future=True)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 db = Database(session_factory=async_session)
