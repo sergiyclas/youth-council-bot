@@ -34,7 +34,7 @@ def get_params():
     params = request.args
     return jsonify({"parameters": params})
 
-choose = 'MySQL'
+choose = 'Postgres'
 if choose == 'MySQL':
     DATABASE = DATABASE_URL
 else:
