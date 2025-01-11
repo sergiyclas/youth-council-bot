@@ -16,11 +16,10 @@ from bot.handlers.admin import admin_router
 from bot.handlers.common import common_router
 from bot.handlers.participant import participant_router
 from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL
-import asyncpg
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
-# logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
 # Ініціалізація Flask-сервера
 app = Flask(__name__)
 
@@ -34,15 +33,18 @@ def get_params():
     params = request.args
     return jsonify({"parameters": params})
 
+# Вибір бази даних
 choose = 'Postgres'
 if choose == 'MySQL':
     DATABASE = DATABASE_URL
 else:
-    DATABASE = "postgresql+asyncpg" + str(POSTGRESQL)
+    DATABASE = f"postgresql+asyncpg{POSTGRESQL}"
 
-engine = create_async_engine(DATABASE, future=True)
+# Ініціалізація SQLAlchemy
+engine = create_async_engine(DATABASE, future=True, echo=True)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
+# Інтеграція бази даних
 db = Database(session_factory=async_session)
 
 # Ініціалізація Telegram-бота
@@ -52,28 +54,31 @@ bot = Bot(
 )
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
 dp.message.middleware(DatabaseMiddleware(db))
 
+# Реєстрація роутерів
 dp.include_router(admin_router)
 dp.include_router(common_router)
 dp.include_router(participant_router)
 
+# Створення таблиць
 async def create_tables():
     """Створює таблиці у базі даних."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    print("Таблиці створено.")
+    logging.info("Таблиці створено.")
 
+# Запуск Telegram-бота
 async def run_bot():
     """Запускає Telegram-бота."""
-    # logging.info("Скидання існуючих команд...")
-    # await reset_bot_commands(bot)  # Скидаємо команди
-    await bot.delete_webhook(drop_pending_updates=True) # скидання закинутих повідомлень
+    await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Встановлення команд для бота...")
-    await set_bot_commands(bot)  # Встановлюємо команди
-    logging.info("Команди встановлено. Telegram-бот запущено.")
+    await set_bot_commands(bot)
+    logging.info("Telegram-бот запущено.")
     await dp.start_polling(bot)
 
+# Окремі функції для запуску процесів
 def start_bot():
     """Функція для запуску Telegram-бота в окремому процесі."""
     asyncio.run(run_bot())
@@ -82,6 +87,7 @@ def start_flask():
     """Функція для запуску Flask-сервера."""
     app.run(host="0.0.0.0", port=5000, debug=False)
 
+# Головна функція
 if __name__ == "__main__":
     # Створення таблиць у базі даних
     asyncio.run(create_tables())

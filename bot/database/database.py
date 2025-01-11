@@ -518,6 +518,6 @@ class DatabaseMiddleware(BaseMiddleware):
         super().__init__()
         self.db = db
 
-    async def __call__(self, handler: Callable, event: types.Message, data: Dict[str, Any]) -> Any:
+    async def __call__(self, handler: Callable, event: Any, data: Dict[str, Any]) -> Any:
         data['db'] = self.db
         return await handler(event, data)
