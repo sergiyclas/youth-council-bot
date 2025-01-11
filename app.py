@@ -38,7 +38,7 @@ choose = 'Postgres'
 if choose == 'MySQL':
     DATABASE = DATABASE_URL
 else:
-    DATABASE = "postgres+asyncpg" + str(POSTGRESQL)
+    DATABASE = "postgresql+asyncpg" + str(POSTGRESQL)
 
 engine = create_async_engine(DATABASE, future=True)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
