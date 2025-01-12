@@ -3,6 +3,8 @@ import logging
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+
+from bot.keyboards.admin import admin_menu_kb
 from bot.keyboards.common import common_kb
 from bot.database.database import Database
 
@@ -68,6 +70,7 @@ async def help_command(message: types.Message):
             "🔹 <b>/info</b> - Інформація про сесію.\n"
             "🔹 <b>/leave</b> - Вийти з сесії.\n"
             "🔹 <b>/help</b> - Допомога по командах.\n"
+            "🔹 <b>/post</b> - Написати пост через AI (лише для адмінів).\n"
         ),
         parse_mode="HTML"
     )

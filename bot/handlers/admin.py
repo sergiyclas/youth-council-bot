@@ -3,8 +3,8 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
-from aiogram.types import InputFile
 
+from bot.common.ai import generate_post, client
 from bot.common.utils import generate_protocol, generate_attendance_list_full
 from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb
 from bot.database.database import Database
@@ -428,4 +428,33 @@ async def end_session(message: types.Message, state: FSMContext, db: Database):
         f"Сесію <b>{session_name}</b> завершено. Результати розіслані всім учасникам.",
         parse_mode="HTML", reply_markup=admin_menu_kb()
     )
+    await state.clear()
+
+
+@admin_router.message(F.text == "Написати пост")
+@admin_router.message(Command("post"))
+async def create_session(message: types.Message, state: FSMContext):
+    logging.info(f"Користувач {message.from_user.id} починає написання посту через ШІ")
+
+    if str(message.from_user.id) not in ['1014099963', '1762778352']:
+        await message.answer("У вас нема прав")
+
+    await message.answer("Вставте інформацію з якої слід згенерувати пост:")
+    await state.set_state("waiting")
+
+@admin_router.message(StateFilter("waiting"))
+async def send_generated_post(message: types.Message, state: FSMContext, db: Database):
+    text = message.text
+    logging.info(f"Згенеровано {text}")
+
+    await message.reply("Генерую пост, зачекайте...")
+
+    post = await generate_post(client, text)
+    print(post)
+
+    if post:
+        await message.reply(f"{post}")
+    else:
+        await message.reply("На жаль, не вдалося згенерувати пост. Спробуйте пізніше.")
+
     await state.clear()
