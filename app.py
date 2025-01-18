@@ -9,21 +9,20 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from bot.common.commands import set_bot_commands, reset_bot_commands
-from bot.database.database import Database, Base, DatabaseMiddleware
 from bot.handlers.admin import admin_router
 from bot.handlers.common import common_router
 from bot.handlers.participant import participant_router
-from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL
+from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL, OPTION
 import asyncpg
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
 
-# Ініціалізація бази даних
-choose = 'post'
-if choose == 'MySQL':
+if str(OPTION) == 'MySQL':
     DATABASE = DATABASE_URL
+    from bot.database.database import Database, Base, DatabaseMiddleware
 else:
+    from bot.database.database_postgres import Database, Base, DatabaseMiddleware
     DATABASE = "postgresql+asyncpg" + str(POSTGRESQL)
 
 engine = create_async_engine(DATABASE, future=True)

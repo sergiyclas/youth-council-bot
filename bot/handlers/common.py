@@ -6,7 +6,13 @@ from aiogram.fsm.context import FSMContext
 
 from bot.keyboards.admin import admin_menu_kb
 from bot.keyboards.common import common_kb
-from bot.database.database import Database
+
+from config import OPTION
+
+if str(OPTION) == 'MySQL':
+    from bot.database.database import Database
+else:
+    from bot.database.database_postgres import Database
 
 common_router = Router()
 

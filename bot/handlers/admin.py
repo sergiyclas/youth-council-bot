@@ -7,10 +7,15 @@ from aiogram.filters import Command, StateFilter
 from bot.common.ai import generate_post, client
 from bot.common.utils import generate_protocol, generate_attendance_list_full
 from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb
-from bot.database.database import Database
 from random import randint
-
 from bot.keyboards.common import vote_kb, common_kb
+
+from config import OPTION
+
+if str(OPTION) == 'MySQL':
+    from bot.database.database import Database
+else:
+    from bot.database.database_postgres import Database
 
 admin_router = Router()
 

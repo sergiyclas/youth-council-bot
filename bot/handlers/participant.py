@@ -7,7 +7,13 @@ from aiogram.filters import Command
 
 from bot.keyboards.admin import admin_menu_kb
 from bot.keyboards.participant import participant_menu_kb
-from bot.database.database import Database
+
+from config import OPTION
+
+if str(OPTION) == 'MySQL':
+    from bot.database.database import Database
+else:
+    from bot.database.database_postgres import Database
 
 participant_router = Router()
 
