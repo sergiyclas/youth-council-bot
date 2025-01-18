@@ -20,7 +20,7 @@ import asyncpg
 logging.basicConfig(level=logging.INFO)
 
 # Ініціалізація бази даних
-choose = 'postgre'
+choose = 'post'
 if choose == 'MySQL':
     DATABASE = DATABASE_URL
 else:
