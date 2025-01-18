@@ -47,8 +47,8 @@ async def generate_protocol(session_code, db):
     voting_results = await db.get_all_vote_results(session_code)
 
     # Формуємо ім'я файлу протоколу
-    date = datetime.now().strftime("%d_%m_%Y")
-    file_name = f"{date}_Протокол_{session_code}.docx"
+    date = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    file_name = f"{date}_Протокол.docx"
     file_path = os.path.join("protocols", file_name)
 
     # Створюємо документ
@@ -167,8 +167,8 @@ async def generate_attendance_list_full(session_code, session_name, db):
     participants = await db.get_session_participants_with_names(session_code)
 
     # Формуємо ім'я файлу додатка
-    date = datetime.now().strftime("%d_%m_%Y")
-    file_name = f"{date}_Додаток_присутності_{session_code}.docx"
+    date = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    file_name = f"{date}_Додаток_присутності.docx"
     file_path = os.path.join("protocols", file_name)
 
     # Створюємо документ
