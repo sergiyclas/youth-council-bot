@@ -40,7 +40,7 @@ class Vote(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     agenda_item_id = Column(Integer, ForeignKey("agenda_items.id"), nullable=False)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(BigInteger, nullable=False)
     vote = Column(String(10), nullable=False)  # "За", "Проти", "Утримаюсь"
 
     agenda_item = relationship("AgendaItem", back_populates="votes")

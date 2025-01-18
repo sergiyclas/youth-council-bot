@@ -13,7 +13,7 @@ class Session(Base):
     __tablename__ = "sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(String, unique=True, nullable=False)
+    code = Column(Integer, unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     password = Column(String(255), nullable=False)
     admin_id = Column(BigInteger, nullable=False)
@@ -27,7 +27,7 @@ class AgendaItem(Base):
     __tablename__ = "agenda_items"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(BigInteger, ForeignKey("sessions.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     description = Column(Text, nullable=False)
     position = Column(Integer, nullable=False)
 
@@ -71,7 +71,7 @@ class Database:
                 logging.warning(f"У адміністратора {admin_id} вже є активна сесія з кодом {active_session.code}. Завершуємо її.")
 
             new_session = Session(
-                code=session_code,
+                code=int(session_code),
                 name=session_name,
                 password=session_password,
                 admin_id=admin_id
@@ -82,7 +82,7 @@ class Database:
     async def set_session_agenda(self, session_code, agenda):
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == session_code)
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
             if session_obj:
@@ -102,7 +102,7 @@ class Database:
     async def start_voting(self, session_code):
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
             if session_obj:
@@ -112,7 +112,7 @@ class Database:
     async def end_session(self, session_code):
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
 
@@ -170,7 +170,7 @@ class Database:
     async def get_session_agenda(self, session_code):
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
             if session_obj:
@@ -191,7 +191,7 @@ class Database:
         """
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
             if not session_obj:
@@ -227,7 +227,7 @@ class Database:
     async def check_all_votes_collected(self, session_code, question):
         async with self.session_factory() as session:
             session_obj = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = session_obj.scalar_one_or_none()
             if not session_obj:
@@ -254,7 +254,7 @@ class Database:
     async def count_of_participants(self, session_code):
         async with self.session_factory() as session:
             session_obj = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = session_obj.scalar_one_or_none()
             if not session_obj:
@@ -269,7 +269,7 @@ class Database:
     async def get_vote_results(self, session_code, question):
         async with self.session_factory() as session:
             session_obj = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = session_obj.scalar_one_or_none()
             if not session_obj:
@@ -297,7 +297,7 @@ class Database:
     async def add_participant(self, session_code, user_id, user_name):
         async with self.session_factory() as session:
             result = await session.execute(
-                select(Session).where(Session.code == str(session_code))
+                select(Session).where(Session.code == int(session_code))
             )
             session_obj = result.scalar_one_or_none()
             if not session_obj:
@@ -324,132 +324,132 @@ class Database:
             await session.commit()
             logging.info(f"Користувач {user_id} доданий до сесії {session_code} як {user_name}.")
 
-        async def get_session_participants(self, session_code):
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Participant.user_id).join(Session).where(Session.code == str(session_code))
-                )
-                return [row[0] for row in result.fetchall()]  # Повертаємо лише user_id
+    async def get_session_participants(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Participant.user_id).join(Session).where(Session.code == int(session_code))
+            )
+            return [row[0] for row in result.fetchall()]  # Повертаємо лише user_id
 
-        async def get_session_by_code(self, session_code):
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Session).where(Session.code == str(session_code))
-                )
-                return result.scalar_one_or_none()
+    async def get_session_by_code(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == int(session_code))
+            )
+            return result.scalar_one_or_none()
 
-        async def get_current_question_index(self, session_code):
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Session.current_question_index).where(Session.code == str(session_code))
-                )
-                return result.scalar_one_or_none()
+    async def get_current_question_index(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session.current_question_index).where(Session.code == int(session_code))
+            )
+            return result.scalar_one_or_none()
 
-        async def set_current_question_index(self, session_code, question_index):
-            async with self.session_factory() as session:
-                session_obj = await session.execute(
-                    select(Session).where(Session.code == str(session_code))
-                )
-                session_obj = session_obj.scalar_one_or_none()
-                if session_obj:
-                    session_obj.current_question_index = question_index
-                    await session.commit()
-
-        async def get_admin_id(self, session_code: str) -> int:
-            """
-            Отримати ID адміністратора за кодом сесії.
-            """
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Session.admin_id).where(Session.code == str(session_code))
-                )
-                return result.scalar_one_or_none()
-
-        async def has_user_voted(self, session_code, user_id, question):
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Vote).where(
-                        Vote.agenda_item_id == select(AgendaItem.id)
-                        .where(
-                            AgendaItem.description == question,
-                            AgendaItem.session_id == select(Session.id)
-                            .where(Session.code == str(session_code))
-                            .scalar_subquery()
-                        )
-                        .scalar_subquery(),
-                        Vote.user_id == user_id
-                    )
-                )
-                return result.scalar_one_or_none() is not None
-
-        async def remove_participant(self, session_code: str, user_id: int):
-            async with self.session_factory() as session:
-                session_result = await session.execute(
-                    select(Session.id).where(Session.code == str(session_code))
-                )
-                session_id = session_result.scalar_one_or_none()
-                if not session_id:
-                    raise Exception(f"Сесія з кодом {session_code} не знайдена.")
-
-                await session.execute(
-                    delete(Participant).where(
-                        Participant.session_id == session_id,
-                        Participant.user_id == user_id
-                    )
-                )
+    async def set_current_question_index(self, session_code, question_index):
+        async with self.session_factory() as session:
+            session_obj = await session.execute(
+                select(Session).where(Session.code == int(session_code))
+            )
+            session_obj = session_obj.scalar_one_or_none()
+            if session_obj:
+                session_obj.current_question_index = question_index
                 await session.commit()
 
-        async def get_all_vote_results(self, session_code: str) -> dict:
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Session.id).where(Session.code == str(session_code))
-                )
-                session_id = result.scalar_one_or_none()
-                if not session_id:
-                    raise ValueError("Сесія з таким кодом не знайдена.")
+    async def get_admin_id(self, session_code: int) -> int:
+        """
+        Отримати ID адміністратора за кодом сесії.
+        """
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session.admin_id).where(Session.code == int(session_code))
+            )
+            return result.scalar_one_or_none()
 
-                agenda_result = await session.execute(
-                    select(AgendaItem.id, AgendaItem.description).where(AgendaItem.session_id == session_id)
-                )
-                agenda_items = agenda_result.all()
-
-                voting_results = {}
-                for agenda_item_id, description in agenda_items:
-                    votes_result = await session.execute(
-                        select(Vote.vote, func.count(Vote.id))
-                        .where(Vote.agenda_item_id == agenda_item_id)
-                        .group_by(Vote.vote)
+    async def has_user_voted(self, session_code, user_id, question):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Vote).where(
+                    Vote.agenda_item_id == select(AgendaItem.id)
+                    .where(
+                        AgendaItem.description == question,
+                        AgendaItem.session_id == select(Session.id)
+                        .where(Session.code == int(session_code))
+                        .scalar_subquery()
                     )
-                    votes = votes_result.all()
-
-                    results = {"for": 0, "against": 0, "abstain": 0}
-                    for vote, count in votes:
-                        if vote == "За":
-                            results["for"] = count
-                        elif vote == "Проти":
-                            results["against"] = count
-                        elif vote == "Утримаюсь":
-                            results["abstain"] = count
-
-                    voting_results[description] = results
-
-                return voting_results
-
-        async def get_session_participants_with_names(self, session_code):
-            async with self.session_factory() as session:
-                result = await session.execute(
-                    select(Session).where(Session.code == str(session_code))
+                    .scalar_subquery(),
+                    Vote.user_id == user_id
                 )
-                session_obj = result.scalar_one_or_none()
-                if not session_obj:
-                    logging.warning(f"Сесія з кодом {session_code} не знайдена.")
-                    return []
+            )
+            return result.scalar_one_or_none() is not None
 
-                participants_result = await session.execute(
-                    select(Participant).where(Participant.session_id == session_obj.id)
+    async def remove_participant(self, session_code: int, user_id: int):
+        async with self.session_factory() as session:
+            session_result = await session.execute(
+                select(Session.id).where(Session.code == int(session_code))
+            )
+            session_id = session_result.scalar_one_or_none()
+            if not session_id:
+                raise Exception(f"Сесія з кодом {session_code} не знайдена.")
+
+            await session.execute(
+                delete(Participant).where(
+                    Participant.session_id == session_id,
+                    Participant.user_id == user_id
                 )
-                participants = participants_result.scalars().all()
-                return [{"id": p.user_id, "name": p.name} for p in participants]
+            )
+            await session.commit()
+
+    async def get_all_vote_results(self, session_code: int) -> dict:
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session.id).where(Session.code == int(session_code))
+            )
+            session_id = result.scalar_one_or_none()
+            if not session_id:
+                raise ValueError("Сесія з таким кодом не знайдена.")
+
+            agenda_result = await session.execute(
+                select(AgendaItem.id, AgendaItem.description).where(AgendaItem.session_id == session_id)
+            )
+            agenda_items = agenda_result.all()
+
+            voting_results = {}
+            for agenda_item_id, description in agenda_items:
+                votes_result = await session.execute(
+                    select(Vote.vote, func.count(Vote.id))
+                    .where(Vote.agenda_item_id == agenda_item_id)
+                    .group_by(Vote.vote)
+                )
+                votes = votes_result.all()
+
+                results = {"for": 0, "against": 0, "abstain": 0}
+                for vote, count in votes:
+                    if vote == "За":
+                        results["for"] = count
+                    elif vote == "Проти":
+                        results["against"] = count
+                    elif vote == "Утримаюсь":
+                        results["abstain"] = count
+
+                voting_results[description] = results
+
+            return voting_results
+
+    async def get_session_participants_with_names(self, session_code):
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).where(Session.code == int(session_code))
+            )
+            session_obj = result.scalar_one_or_none()
+            if not session_obj:
+                logging.warning(f"Сесія з кодом {session_code} не знайдена.")
+                return []
+
+            participants_result = await session.execute(
+                select(Participant).where(Participant.session_id == session_obj.id)
+            )
+            participants = participants_result.scalars().all()
+            return [{"id": p.user_id, "name": p.name} for p in participants]
 
 
 class DatabaseMiddleware(BaseMiddleware):
