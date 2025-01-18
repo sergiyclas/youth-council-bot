@@ -43,13 +43,11 @@ dp.include_router(admin_router)
 dp.include_router(common_router)
 dp.include_router(participant_router)
 
-
 async def create_tables():
     """Створює таблиці у базі даних."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logging.info("Таблиці створено.")
-
 
 async def run_bot():
     """Запускає Telegram-бота."""
@@ -59,10 +57,11 @@ async def run_bot():
     logging.info("Команди встановлено. Telegram-бот запущено.")
     await dp.start_polling(bot)
 
+def main():
+    """Основна функція для запуску бота та створення БД в одному подієвому циклі."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(create_tables())
+    loop.run_until_complete(run_bot())
 
 if __name__ == "__main__":
-    # Створення таблиць у базі даних
-    asyncio.run(create_tables())
-
-    # Запуск Telegram-бота
-    asyncio.run(run_bot())
+    main()
