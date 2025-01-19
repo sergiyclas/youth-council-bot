@@ -1,12 +1,15 @@
 import logging
 import asyncio
+from multiprocessing import Process
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from flask import Flask, jsonify, request
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.testing.provision import drop_db
 
 from bot.common.commands import set_bot_commands, reset_bot_commands
 from bot.handlers.admin import admin_router
@@ -17,6 +20,19 @@ import asyncpg
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
+
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Flask-сервер працює. Бот запущено!"
+
+@app.route("/params", methods=["GET"])
+def get_params():
+    """Обробляє GET запити й повертає передані параметри."""
+    params = request.args
+    return jsonify({"parameters": params})
+
 
 if str(OPTION) == 'MySQL':
     DATABASE = DATABASE_URL
@@ -45,7 +61,7 @@ dp.include_router(participant_router)
 async def create_tables():
     """Створює таблиці у базі даних."""
     async with engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     logging.info("Таблиці створено.")
@@ -58,11 +74,26 @@ async def run_bot():
     logging.info("Команди встановлено. Telegram-бот запущено.")
     await dp.start_polling(bot)
 
-def main():
-    """Основна функція для запуску бота та створення БД в одному подієвому циклі."""
+def start_bot():
+    """Функція для запуску Telegram-бота в окремому процесі."""
     loop = asyncio.get_event_loop()
     loop.run_until_complete(create_tables())
     loop.run_until_complete(run_bot())
+
+def start_flask():
+    """Функція для запуску Flask-сервера."""
+    app.run(host="0.0.0.0", port=5000, debug=False)
+
+def main():
+    """Основна функція для запуску бота та створення БД в одному подієвому циклі."""
+    bot_process = Process(target=start_bot)
+    flask_process = Process(target=start_flask)
+
+    bot_process.start()
+    flask_process.start()
+
+    bot_process.join()
+    flask_process.join()
 
 if __name__ == "__main__":
     main()
