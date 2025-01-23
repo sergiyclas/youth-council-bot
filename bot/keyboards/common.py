@@ -21,3 +21,11 @@ def vote_kb():
         KeyboardButton(text="Утримаюсь")
     )
     return keyboard.adjust(1).as_markup(resize_keyboard=True)
+
+def pdf_kb():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(
+        KeyboardButton(text="Об'єднати PDF"),
+        # KeyboardButton(text="Завершити об'єднання"),
+    )
+    return keyboard.adjust(1).as_markup(resize_keyboard=True)

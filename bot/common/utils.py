@@ -5,6 +5,8 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Cm
 import os
 from datetime import datetime
+
+from bot.common.infinitiveConverter import convert_to_infinitive, capitalize_first_word
 from bot.common.mini_libs import months_uk, questions
 
 def set_page_margins(document):
@@ -30,10 +32,6 @@ def set_page_margins(document):
 async def generate_protocol(session_code, db):
     """
     Генерує протокол для завершеної сесії.
-
-    :param session_code: Код сесії.
-    :param db: Об'єкт бази даних.
-    :return: Шлях до збереженого файлу протоколу.
     """
     # Отримуємо дані про сесію
     session = await db.get_session_by_code(session_code)
@@ -42,48 +40,56 @@ async def generate_protocol(session_code, db):
 
     session_name = session.name
     admin_id = session.admin_id
-    participants = await db.get_session_participants_with_names(session_code)
-    agenda = await db.get_session_agenda(session_code)
-    voting_results = await db.get_all_vote_results(session_code)
+    participants = await db.get_session_participants_with_names(session_code) or []
+    agenda = await db.get_session_agenda(session_code) or []
+    voting_results = await db.get_all_vote_results(session_code) or {}
 
-    # Формуємо ім'я файлу протоколу
+    print(voting_results)
+
+    youth_council_info = await db.get_full_youth_council_info(admin_id)
+    protocol_info = await db.get_session_details(session_code)
+
+    council_name = youth_council_info.get("name", "______________________________________________________")
+    if council_name.lower().strip()[:14] == 'молодіжна рада':
+        council_name = "Молодіжної ради " + council_name[15:]
+
+    city = youth_council_info.get("city", "______________")
+    head = youth_council_info.get("head", "___________________________")
+    secretary = youth_council_info.get("secretary", "___________________________")
+    number = protocol_info.get("number", "____")
+    session_type = protocol_info.get('session_type', "______________")
+
     date = datetime.now().strftime("%Y_%m_%d_%H_%M")
-    file_name = f"{date}_Протокол.docx"
+    file_name = f"{date}_Протокол_{number}.docx"
     file_path = os.path.join("protocols", file_name)
 
-    # Створюємо документ
     document = Document()
     set_page_margins(document)
 
-    # Встановлюємо загальний стиль шрифту
     style = document.styles['Normal']
     font = style.font
     font.name = 'Times New Roman'
     font.size = Pt(14)
 
-    # Заголовок протоколу
     title = document.add_paragraph()
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    title_run = title.add_run(f"Протокол № {session_name}\nПозачергового засідання Молодіжної ради при Рава-Руській міській раді")
+    title_run = title.add_run(f"Протокол № {number}\n{session_type} засідання {council_name}")
     title_run.bold = True
     title_run.font.size = Pt(14)
 
     current_date = datetime.now()
     date_for_title = f"{current_date.day} {months_uk[current_date.month]} {current_date.year}"
 
-    city = "м. Рава-Руська"
     font_size = 14
-    max_width = 99
+    max_width = 113 - len(city)
 
     text_with_spaces = f"{city}{' ' * (max_width - len(date_for_title) - 4)}{date_for_title} р."
 
-    # Додаємо текст до документа
     paragraph = document.add_paragraph()
     run = paragraph.add_run(text_with_spaces)
     run.font.size = Pt(font_size)
     paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
 
-    # Присутні
     present_paragraph = document.add_paragraph()
     present_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     present_paragraph.add_run(f"Присутні: {len(participants)} (додаток 1)").bold = True
@@ -92,29 +98,39 @@ async def generate_protocol(session_code, db):
     invited_paragraph.add_run("Запрошені: ").bold = True
     invited_paragraph.add_run("-")
 
-    # Порядок денний
     agenda_paragraph = document.add_paragraph()
     agenda_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     agenda_paragraph.add_run("Порядок денний:").bold = True
 
     for i, item in enumerate(agenda, start=1):
-        document.add_paragraph(f"{item}", style='List Number')
+        par = document.add_paragraph(style='List Number')
+        run = par.add_run(f"{item}")
+        run.bold = True
+    par = document.add_paragraph(style='List Number')
+    run = par.add_run(f"Різне")
+    run.bold = True
 
-    # Результати голосувань
     for i, (question, results) in enumerate(voting_results.items(), start=1):
-        # Додаємо жирний текст для пункту "По {questions[i]} питанню слухали"
+        question_inf = convert_to_infinitive(question)
         paragraph = document.add_paragraph(style='Normal')
-        run = paragraph.add_run(f"{i}. По {questions[i]} питанню слухали")
+        run = paragraph.add_run(f"{i}. По {questions[i]} питанню порядку денного слухали")
         run.bold = True
 
+        proposed_name = await db.get_proposed_name(session_code, question) or "___________________________"
+        proposed_rv = await db.get_name_rv(admin_id, proposed_name)
+        proposer_text = proposed_rv.name_rv if proposed_rv and proposed_rv.name_rv else proposed_name
+
         document.add_paragraph(
-            f"Дзеня Сергія, який запропонував {question.lower()}", style='Normal'
+            f"{proposer_text}, який запропонував {question_inf}", style='Normal'
         )
 
-        # Додаємо жирний текст для результатів голосування
+        not_vote = ''
+        if results['not_voted'] >= 1:
+            not_vote = f", \"НЕ ГОЛОСУВАЛИ\" - {results['not_voted']}"
+
         paragraph = document.add_paragraph(style='Normal')
         run = paragraph.add_run(
-            f"Проголосували: \"ЗА\" - {results['for']}, \"ПРОТИ\" - {results['against']}, \"УТРИМАЛИСЬ\" - {results['abstain']}"
+            f"Проголосували: \"ЗА\" - {results['for']}, \"ПРОТИ\" - {results['against']}, \"УТРИМАЛИСЬ\" - {results['abstain']}{not_vote}"
         )
         run.bold = True
 
@@ -123,31 +139,26 @@ async def generate_protocol(session_code, db):
         run.bold = True
 
         paragraph = document.add_paragraph(style='Normal')
-        run = paragraph.add_run(f"{question}")
+        run = paragraph.add_run(f"{capitalize_first_word(question_inf)}")
 
     paragraph = document.add_paragraph(style='Normal')
     run = paragraph.add_run(f"{len(voting_results.items()) + 1}. Питання різне - не піднімалося")
     run.bold = True
 
-    # Додаємо порожній абзац перед підписами для відступу
     document.add_paragraph("\n")
 
-    # Головуючий засідання
     paragraph = document.add_paragraph(style='Normal')
     run = paragraph.add_run("Головуючий засідання: ")
     run.bold = True
-    run = paragraph.add_run("Дзень Сергій _______________")
+    run = paragraph.add_run(f"{head} _______________")
 
-    # Додати відступ
     document.add_paragraph("\n\n")
 
-    # Секретар засідання
     paragraph = document.add_paragraph(style='Normal')
     run = paragraph.add_run("Секретар засідання: ")
     run.bold = True
-    run = paragraph.add_run("Близнак Марта ______________")
+    run = paragraph.add_run(f"{secretary} ______________")
 
-    # Зберігаємо файл
     os.makedirs("protocols", exist_ok=True)
     document.save(file_path)
 
@@ -163,12 +174,28 @@ async def generate_attendance_list_full(session_code, session_name, db):
     :param db: Об'єкт бази даних.
     :return: Шлях до збереженого файлу анкети.
     """
-    # Отримуємо учасників
-    participants = await db.get_session_participants_with_names(session_code)
+    session = await db.get_session_by_code(session_code)
+    if not session:
+        raise ValueError("Сесія не знайдена.")
+
+    session_name = session.name
+    admin_id = session.admin_id
+    participants = await db.get_session_participants_with_names(session_code) or []
+
+    youth_council_info = await db.get_full_youth_council_info(admin_id)
+    protocol_info = await db.get_session_details(session_code)
+
+    council_name = youth_council_info.get("name", "______________________________________________________")
+    if council_name.lower().strip()[:14] == 'молодіжна рада':
+        council_name = "Молодіжної ради " + council_name[19:]
+
+    region = youth_council_info.get("region", "___________________________")
+    number = protocol_info.get("number", "____")
+    session_type = protocol_info.get('session_type', "______________")
 
     # Формуємо ім'я файлу додатка
     date = datetime.now().strftime("%Y_%m_%d_%H_%M")
-    file_name = f"{date}_Додаток_присутності.docx"
+    file_name = f"{date}_Додаток_присутності_{number}.docx"
     file_path = os.path.join("protocols", file_name)
 
     # Створюємо документ
@@ -191,8 +218,8 @@ async def generate_attendance_list_full(session_code, session_name, db):
     date_for_title = f"{current_date.day} {months_uk[current_date.month]} {current_date.year}"
 
     title_run = title.add_run(
-        f"Реєстраційна анкета на засідання №{session_name}, {date_for_title} року\n"
-        f"Молодіжної ради при Рава-Руській міській раді Львівського району Львівської області"
+        f"Реєстраційна анкета на {session_type} засідання №{number}, {date_for_title} року\n"
+        f"{council_name} {region}"
     )
     title_run.font.name = "Times New Roman"
     title_run.font.size = Pt(14)

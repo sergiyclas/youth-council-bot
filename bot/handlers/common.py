@@ -1,11 +1,15 @@
 import logging
+import PyPDF2
 
-from aiogram import Router, types, F
-from aiogram.filters import Command
+from aiogram import Router, types, F, Bot
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+import os
 
-from bot.keyboards.admin import admin_menu_kb
-from bot.keyboards.common import common_kb
+
+from bot.keyboards.admin import admin_menu_kb, session_control_resized_kb, session_control_kb
+from bot.keyboards.common import common_kb, pdf_kb
 
 from config import OPTION
 
@@ -15,6 +19,16 @@ else:
     from bot.database.database_postgres import Database
 
 common_router = Router()
+
+
+pdf_router = Router()
+
+class PDFMergeStates(StatesGroup):
+    uploading = State()
+    merging = State()
+
+pdf_files = {}
+
 
 @common_router.message(Command("start"))
 async def start_command(message: types.Message, state: FSMContext):
@@ -39,7 +53,7 @@ async def session_info(message: types.Message, state: FSMContext, db: Database):
     session_name = session_data.get("session_name")
 
     if not session_code or not session_name:
-        await message.answer("Помилка: Ви не перебуваєте в активній сесії.", reply_markup=admin_menu_kb())
+        await message.answer("Помилка: Ви не перебуваєте в активній сесії.", reply_markup=session_control_kb())
         return
 
     # Отримуємо список учасників
@@ -76,7 +90,86 @@ async def help_command(message: types.Message):
             "🔹 <b>/info</b> - Інформація про сесію.\n"
             "🔹 <b>/leave</b> - Вийти з сесії.\n"
             "🔹 <b>/help</b> - Допомога по командах.\n"
+            "🔹 <b>/merge_pdf</b> - Об'єднати pdf-файли (макс. 5 за раз).\n"
             "🔹 <b>/post</b> - Написати пост через AI (лише для адмінів).\n"
         ),
         parse_mode="HTML"
     )
+
+
+@pdf_router.message(Command("merge_pdf"))
+async def start_pdf_merge(message: types.Message, state: FSMContext):
+    pdf_files[message.from_user.id] = []
+    await state.set_state(PDFMergeStates.uploading)
+    await message.answer("Скиньте PDF-файл. Ви можете завантажити до 5 файлів. Натисніть 'Об'єднати PDF', коли завершите.",
+                         reply_markup=pdf_kb())
+
+
+@pdf_router.message(PDFMergeStates.uploading, F.document)
+async def receive_pdf(message: types.Message, state: FSMContext, bot: Bot):
+    user_id = message.from_user.id
+
+    if user_id not in pdf_files:
+        await message.answer("Будь ласка, спочатку введіть команду /merge_pdf.")
+        return
+
+    if message.document is None:
+        await message.answer("Будь ласка, надішліть саме PDF-файл.")
+        return
+
+    if len(pdf_files[user_id]) >= 5:
+        await message.answer("Ліміт завантажених файлів вичерпано. Натисніть 'Об'єднати PDF'.")
+        return
+
+    if message.document.mime_type != "application/pdf":
+        await message.answer("Будь ласка, надішліть саме PDF-файл.")
+        return
+
+    file_id = message.document.file_id
+    file_path = f"temp_{user_id}_{len(pdf_files[user_id]) + 1}.pdf"
+
+    file = await bot.get_file(file_id)
+    await bot.download_file(file.file_path, file_path)
+
+    pdf_files[user_id].append(file_path)
+    await message.answer(f"Файл {message.document.file_name} додано. Ви можете додати ще {5 - len(pdf_files[user_id])} файлів.")
+
+
+@pdf_router.message(PDFMergeStates.uploading, F.text == "Об'єднати PDF")
+async def ask_for_pdf_name(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+
+    if user_id not in pdf_files or len(pdf_files[user_id]) == 0:
+        await state.clear()
+        await message.answer("Ви не завантажили жодного PDF-файлу, тому результату нема.\n\nГарного дня", reply_markup=session_control_kb())
+        return
+
+    await state.set_state("waiting_for_pdf_name")
+    await message.answer("Введіть назву для об'єднаного PDF-файлу:")
+
+
+@pdf_router.message(StateFilter("waiting_for_pdf_name"))
+async def merge_pdfs_command(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    pdf_name = message.text.strip()
+
+    if user_id not in pdf_files or len(pdf_files[user_id]) == 0:
+        await message.answer("Ви не завантажили жодного PDF-файлу.")
+        return
+
+    output_filename = f"{pdf_name}.pdf"
+    merger = PyPDF2.PdfMerger()
+    for pdf in pdf_files[user_id]:
+        merger.append(pdf)
+    merger.write(output_filename)
+    merger.close()
+
+    await message.answer_document(types.FSInputFile(output_filename))
+    await message.answer("Ваш PDF-файл об'єднано!\n\nУспішного використання!", reply_markup=session_control_kb())
+
+    for pdf in pdf_files[user_id]:
+        os.remove(pdf)
+    os.remove(output_filename)
+    del pdf_files[user_id]
+
+    await state.clear()

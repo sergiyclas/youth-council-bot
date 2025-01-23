@@ -7,6 +7,7 @@ async def set_bot_commands(bot):
         BotCommand(command="/join", description="Приєднатися до сесії"),
         BotCommand(command="/create_session", description="Створити сесію"),
         BotCommand(command="/info", description="Інформація про сесію"),
+        BotCommand(command="/merge_pdf", description="Об'єднати pdf-файли"),
         BotCommand(command="/post", description="Згенерувати пост(лише для адмінів)"),
         BotCommand(command="/leave", description="Залишити сесію"),
     ]

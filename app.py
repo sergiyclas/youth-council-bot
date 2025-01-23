@@ -13,9 +13,9 @@ from sqlalchemy.testing.provision import drop_db
 
 from bot.common.commands import set_bot_commands, reset_bot_commands
 from bot.handlers.admin import admin_router
-from bot.handlers.common import common_router
+from bot.handlers.common import common_router, pdf_router
 from bot.handlers.participant import participant_router
-from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL, OPTION
+from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL, OPTION, TELEGRAM_TOKEN_TEST
 import asyncpg
 
 # Налаштування логів
@@ -33,7 +33,6 @@ def get_params():
     params = request.args
     return jsonify({"parameters": params})
 
-
 if str(OPTION) == 'MySQL':
     DATABASE = DATABASE_URL
     from bot.database.database import Database, Base, DatabaseMiddleware
@@ -47,9 +46,10 @@ db = Database(session_factory=async_session)
 
 # Ініціалізація Telegram-бота
 bot = Bot(
-    token=TELEGRAM_TOKEN,
+    token=TELEGRAM_TOKEN_TEST,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
+
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 dp.message.middleware(DatabaseMiddleware(db))
@@ -57,11 +57,12 @@ dp.message.middleware(DatabaseMiddleware(db))
 dp.include_router(admin_router)
 dp.include_router(common_router)
 dp.include_router(participant_router)
+dp.include_router(pdf_router)
 
 async def create_tables():
     """Створює таблиці у базі даних."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     logging.info("Таблиці створено.")

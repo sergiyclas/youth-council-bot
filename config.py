@@ -11,3 +11,5 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 POSTGRESQL = os.getenv('POSTGRESQL')
 OPENAI_KEY = os.getenv('OPENAI')
 OPTION = os.getenv('OPTION')
+
+TELEGRAM_TOKEN_TEST = os.getenv('TELEGRAM_TOKEN_TEST')

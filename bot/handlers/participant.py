@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import StateFilter
 from aiogram.filters import Command
 
-from bot.keyboards.admin import admin_menu_kb
+from bot.keyboards.admin import admin_menu_kb, force_end_vote_kb
 from bot.keyboards.participant import participant_menu_kb
 
 from config import OPTION
@@ -81,6 +81,8 @@ async def handle_name(message: types.Message, state: FSMContext, db: Database):
 
     # Зберігаємо session_code, session_name та user_name
     session = await db.get_session_by_code(session_code)
+
+    await state.set_state("voting")
     await state.update_data(session_code=session.code, session_name=session.name, user_name=user_name)
 
     await message.answer(
@@ -88,6 +90,93 @@ async def handle_name(message: types.Message, state: FSMContext, db: Database):
         parse_mode="HTML",
         reply_markup=participant_menu_kb()
     )
+
+@participant_router.message(StateFilter("voting"), F.text.in_({"За", "Проти", "Утримаюсь"}))
+async def collect_votes(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+
+    print('user_participant')
+
+    # Отримуємо session_code
+    session_code = session_data.get("session_code")
+    if not session_code:
+        await message.answer("Помилка: Сесія не знайдена.")
+        return
+
+    # Отримуємо поточне питання та порядок денний із бази даних
+    current_question_index = session_data.get("current_question_index", 0)
+    agenda = session_data.get("agenda", [])
+
+    if current_question_index is None or not agenda or current_question_index >= len(agenda):
+        await message.answer("Помилка: Питання не знайдені.")
+        return
+
+    current_question = agenda[current_question_index]
+
+    # Перевіряємо, чи користувач уже голосував за це питання
+    user_voted = await db.has_user_voted(
+        session_code=session_code,
+        user_id=message.from_user.id,
+        question=current_question
+    )
+
+    admin_id = await db.get_admin_id(session_code)
+
+    force_close = False
+    if message.text == "Завершити опитування по поточному питанню" and admin_id == message.from_user.id:
+        force_close = True
+
+    if user_voted and not force_close:
+        await message.answer("Ви вже проголосували за це питання. Дочекайтеся завершення голосування.", reply_markup=types.ReplyKeyboardRemove())
+        return
+
+    if not force_close and not user_voted:
+    # Зберігаємо голос
+        await db.add_vote(
+            session_code=session_code,
+            user_id=message.from_user.id,
+            question=current_question,
+            vote=message.text
+        )
+        await message.answer("Ваш голос зараховано.", reply_markup=types.ReplyKeyboardRemove())
+
+    all_votes_collected = await db.check_all_votes_collected(session_code, current_question)
+    if all_votes_collected or force_close:
+        # Отримуємо результати голосування
+        vote_results = await db.get_vote_results(session_code, current_question)
+        count_participants = await db.count_of_participants(session_code)
+        vote_results['Не голосували'] = count_participants - sum(vote_results.values())
+        results_text = "\n".join(
+            [f"<b>{key}</b>: {value}" for key, value in vote_results.items()]
+        )
+
+        decision = "Не ухвалено"
+        if int(vote_results['За']) * 2 > count_participants:
+            decision = "Ухвалено"
+
+        # Надсилаємо результати всім учасникам
+        participants = await db.get_session_participants(session_code)
+        for participant_id in participants:
+            await message.bot.send_message(
+                chat_id=participant_id,
+                text=f"Голосування завершено для питання:\n<b>{current_question_index + 1}. {current_question}</b>\n\nРезультати:\n{results_text}\n\nРішення було <b>{decision}</b>",
+                parse_mode="HTML",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+
+        await message.bot.send_message(
+            chat_id=admin_id,
+            text=f"Введіть Прізвище та Ім'я людини, яка запропонувала це питання:",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+
+    else:
+        if message.from_user.id == admin_id:
+            await message.answer(
+                "Не всі проголосували. Ви можете дочекатися або завершити голосування вручну.",
+                reply_markup=force_end_vote_kb()
+            )
+
 
 @participant_router.message(Command("info"))
 @participant_router.message(F.text == "ℹ️ Інформація про сесію")
@@ -139,7 +228,7 @@ async def leave_session(message: types.Message, state: FSMContext, db: Database)
         await message.answer("Помилка: Ви не перебуваєте в жодній сесії.")
         return
 
-    admin_id = db.get_admin_id(session_code)
+    admin_id = await db.get_admin_id(session_code)
     if user_id == admin_id:
         session_data = await state.get_data()
         session_name = session_data.get('session_name')

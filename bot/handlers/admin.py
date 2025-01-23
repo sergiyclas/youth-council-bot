@@ -1,12 +1,16 @@
 import logging
+import re
+
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
+from aiogram.types import FSInputFile
 
 from bot.common.ai import generate_post, client
 from bot.common.utils import generate_protocol, generate_attendance_list_full
-from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb
+from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb, admin_end_vote_kb, \
+    set_rv_name, yes_no_kb
 from random import randint
 from bot.keyboards.common import vote_kb, common_kb
 
@@ -17,6 +21,10 @@ if str(OPTION) == 'MySQL':
 else:
     from bot.database.database_postgres import Database
 
+ignored_texts = ["🔄 Змінити порядок денний", "✅ Почати голосування по питаннях плану", "❌ Завершити сесію",
+                     "⚙️ Налаштувати інформацію про МР", "ℹ️ Інформація про сесію", "/help", "/post", "/join",
+                 "/create_session", "/leave", "/merge_pdf", "/info"]
+
 admin_router = Router()
 
 class AdminStates(StatesGroup):
@@ -25,6 +33,11 @@ class AdminStates(StatesGroup):
     admin_name = State()
     session_agenda = State()
     agenda_question = State()
+    youth_council_name = State()
+    youth_council_city = State()
+    youth_council_region = State()
+    youth_council_head = State()
+    youth_council_secretary = State()
 
 
 @admin_router.message(Command("start"))
@@ -48,6 +61,12 @@ async def create_session(message: types.Message, state: FSMContext):
 @admin_router.message(AdminStates.session_name)
 async def set_session_name(message: types.Message, state: FSMContext):
     session_name = message.text.strip()
+
+    # Перевіряємо, чи текст є текстом кнопки
+    if session_name in ignored_texts:
+        await message.answer("Будь ласка, введіть назву сесії, а не натискайте кнопки.")
+        return
+
     logging.info(f"Отримано ім'я сесії: {session_name}")
     await state.update_data(session_name=session_name)
     await message.answer("Введіть пароль для сесії:")
@@ -61,11 +80,18 @@ async def set_session_password(message: types.Message, state: FSMContext, db: Da
     await state.update_data(session_password=session_password)
 
     # Генеруємо унікальний код сесії
-    session_code = randint(100000, 999999)
+    session_code = randint(1000, 9999)
     session_data = await state.get_data()
     logging.info(f"Генеруємо код сесії: {session_code}")
 
-    # Зберігаємо сесію в базі даних
+    # Перевіряємо, чи вже є сесія з таким номером
+    existing_session = await db.get_session_by_code(session_code)
+    if existing_session:
+        logging.info(f"Видаляємо існуючу сесію: {session_code}")
+        await db.delete_session(session_code)  # Видаляємо сесію
+        await db.delete_related_data(session_code)  # Видаляємо всі пов'язані дані
+
+    # Зберігаємо нову сесію в базі даних
     await db.add_session(
         session_code=session_code,
         session_name=session_data['session_name'],
@@ -83,6 +109,7 @@ async def set_session_password(message: types.Message, state: FSMContext, db: Da
     )
     await message.answer("Введіть ваше ім'я для участі в сесії:")
     await state.set_state(AdminStates.admin_name)
+
 
 
 @admin_router.message(AdminStates.admin_name)
@@ -116,13 +143,18 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
 
     # Тексти кнопок, які потрібно ігнорувати
-    ignored_texts = ["🔄 Змінити порядок денний", "✅ Почати голосування по питаннях плану", "❌ Завершити сесію"]
+    ignored_texts = [
+        "🔄 Змінити порядок денний", "✅ Почати голосування по питаннях плану",
+        "❌ Завершити сесію", "⚙️ Налаштувати інформацію про МР", "ℹ️ Інформація про сесію"
+    ]
 
-    # Перевіряємо, чи текст є текстом кнопки
+    # Якщо натиснута кнопка, виводимо повідомлення
     if message.text in ignored_texts:
         await message.answer("Будь ласка, введіть новий порядок денний, а не натискайте кнопки.")
         return
+
     print(session_data)
+
     # Перевіряємо, чи є session_name і session_code у стані
     session_name = session_data.get('session_name')
     session_code = session_data.get('session_code')
@@ -132,9 +164,31 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
         logging.error("Сесія не знайдена у стані")
         return
 
-    # Обробляємо введений текст, видаляючи номери перед крапкою
-    raw_agenda = message.text.splitlines()
-    agenda = [line.split('.', 1)[1].strip() if '.' in line else line.strip() for line in raw_agenda]
+    # Розбиваємо введений текст по рядках та очищаємо кожен рядок
+    raw_agenda = message.text.split("\n")
+    agenda = []
+
+    for line in raw_agenda:
+        clean_line = line.strip()
+
+        # Видаляємо першу нумерацію (якщо є), наприклад: "1. Текст" або "2) Текст"
+        clean_line = re.sub(r"^\d+[.)]\s*", "", clean_line)
+
+        # Додаємо у список тільки, якщо рядок не пустий
+        if clean_line:
+            agenda.append(clean_line)
+
+    # Перевірка на дублікати
+    duplicate_items = {item for item in agenda if agenda.count(item) > 1}
+    if duplicate_items:
+        duplicates_text = "\n".join(duplicate_items)
+        await message.answer(
+            f"❌ Помилка: у порядку денному є дублікати питань:\n<b>{duplicates_text}</b>\n"
+            "Будь ласка, виправте та введіть знову.",
+            parse_mode="HTML"
+        )
+        return
+
     logging.info(f"Отримано новий порядок денний для сесії {session_name}: {agenda}")
 
     # Зберігаємо його в базу даних
@@ -146,13 +200,136 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
     )
 
     await message.answer(
-        f"Порядок денний оновлено.\n\n{agenda_html}\n\nДалі ви можете:",
+        f"✅ Порядок денний оновлено.\n\n{agenda_html}\n\nДалі ви можете:",
         reply_markup=session_control_kb(),
         parse_mode="HTML"
     )
     logging.info(f"Порядок денний збережено для сесії {session_name}")
     await state.clear()
-    await state.update_data(session_code=session_code, session_name=session_name)
+    await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda)
+
+
+@admin_router.message(F.text == "⚙️ Налаштувати інформацію про МР")
+async def set_information_about_youth_council(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    admin_id = message.from_user.id
+
+    result = await db.get_youth_council_info(admin_id)
+
+    if result:
+        council_info = result
+        text = (f"Інформація про МР вже заповнена:\n\n"
+                f"Назва: {council_info.name}\n"
+                f"Місто: {council_info.city}\n"
+                f"Регіон: {council_info.region}\n"
+                f"Голова: {council_info.head}\n"
+                f"Секретар: {council_info.secretary}\n\n"
+                "Бажаєте змінити інформацію?")
+
+        await message.answer(text, reply_markup=yes_no_kb())
+    else:
+        await message.answer("Заповніть інформацію про МР. \n\nВведіть назву Молодіжної ради:")
+        await state.set_state(AdminStates.youth_council_name)
+
+
+@admin_router.message(F.text == "Так")
+async def restart_youth_council_info(message: types.Message, state: FSMContext):
+    await message.answer("Введіть назву МР:")
+    await state.set_state(AdminStates.youth_council_name)
+
+
+@admin_router.message(F.text == "Ні")
+async def cancel_youth_council_update(message: types.Message, state: FSMContext):
+    session_data = await state.get_data()
+
+    session_name = session_data.get('session_name')
+    session_code = session_data.get('session_code')
+
+
+    current_question_index = session_data.get("current_question_index", 0)
+    agenda = session_data.get("agenda", [])
+    print(agenda)
+    print(current_question_index)
+    if current_question_index < len(agenda):
+        await message.answer("Налаштування інформації про МР скасовано.", reply_markup=session_control_kb())
+        await state.clear()
+        await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
+        return
+
+    await message.answer(
+        "Усі питання розглянуті. Ви можете завершити сесію.",
+        reply_markup=admin_end_vote_kb()
+    )
+    await state.clear()
+    await state.set_state("admin_control")
+    await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
+    return
+
+
+@admin_router.message(AdminStates.youth_council_name)
+async def set_youth_council_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await message.answer("Введіть місто:")
+    await state.set_state(AdminStates.youth_council_city)
+
+
+@admin_router.message(AdminStates.youth_council_city)
+async def set_youth_council_city(message: types.Message, state: FSMContext):
+    await state.update_data(city=message.text.strip())
+    await message.answer("Введіть регіон:")
+    await state.set_state(AdminStates.youth_council_region)
+
+
+@admin_router.message(AdminStates.youth_council_region)
+async def set_youth_council_region(message: types.Message, state: FSMContext):
+    await state.update_data(region=message.text.strip())
+    await message.answer("Введіть голову засідання:")
+    await state.set_state(AdminStates.youth_council_head)
+
+
+@admin_router.message(AdminStates.youth_council_head)
+async def set_youth_council_head(message: types.Message, state: FSMContext):
+    await state.update_data(head=message.text.strip())
+    await message.answer("Введіть секретаря засідання:")
+    await state.set_state(AdminStates.youth_council_secretary)
+
+
+@admin_router.message(AdminStates.youth_council_secretary)
+async def set_youth_council_secretary(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    admin_id = message.from_user.id
+
+    session_name = session_data.get('session_name')
+    session_code = session_data.get('session_code')
+
+    await db.save_youth_council_info(
+        user_id=admin_id,
+        name=session_data["name"],
+        city=session_data["city"],
+        region=session_data["region"],
+        head=session_data["head"],
+        secretary=message.text.strip()
+    )
+
+    current_question_index = session_data.get("current_question_index", 0)
+    agenda = session_data.get("agenda", [])
+    print(current_question_index)
+
+    if current_question_index < len(agenda):
+        await message.answer("Інформація про МР збережена!", reply_markup=session_control_kb())
+        await state.clear()
+        await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
+        return
+
+
+    await message.answer(
+        "Усі питання розглянуті. Ви можете завершити сесію.",
+        reply_markup=admin_end_vote_kb()
+    )
+    await state.clear()
+    await state.set_state("admin_control")
+    await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
+    return
 
 
 @admin_router.message(F.text == "🔄 Змінити порядок денний")
@@ -207,9 +384,7 @@ async def start_voting(message: types.Message, state: FSMContext, db: Database):
     await state.set_state("voting")
 
 
-
-@admin_router.message(StateFilter("voting"))
-@admin_router.message(F.text.in_({"За", "Проти", "Утримаюсь"}))
+@admin_router.message(StateFilter("voting"), F.text.in_({"За", "Проти", "Утримаюсь"}))
 async def collect_votes(message: types.Message, state: FSMContext, db: Database):
     print('collect_votes')
     session_data = await state.get_data()
@@ -222,8 +397,8 @@ async def collect_votes(message: types.Message, state: FSMContext, db: Database)
         return
 
     # Отримуємо поточне питання та порядок денний із бази даних
-    agenda = await db.get_session_agenda(session_code)
     current_question_index = await db.get_current_question_index(session_code)
+    agenda = await db.get_session_agenda(session_code)
 
     if current_question_index is None or not agenda or current_question_index >= len(agenda):
         await message.answer("Помилка: Питання не знайдені.")
@@ -245,6 +420,7 @@ async def collect_votes(message: types.Message, state: FSMContext, db: Database)
         force_close = True
 
     if user_voted and not force_close:
+        print(current_question, user_voted)
         await message.answer("Ви вже проголосували за це питання. Дочекайтеся завершення голосування.", reply_markup=types.ReplyKeyboardRemove())
         return
 
@@ -284,25 +460,38 @@ async def collect_votes(message: types.Message, state: FSMContext, db: Database)
 
         await message.bot.send_message(
             chat_id=admin_id,
-            text=f"Оберіть наступну дію:",
-            reply_markup=admin_vote_kb()
+            text=f"Введіть Прізвище та Ім'я людини, яка запропонувала це питання:",
+            reply_markup=types.ReplyKeyboardRemove()
         )
 
-        await db.set_current_question_index(session_code, current_question_index + 1)
-        await state.set_state("admin_control")
+        if admin_id == message.from_user.id:
+            await state.set_state("proposer_entry")
+
+        # await message.bot.send_message(
+        #     chat_id=admin_id,
+        #     text=f"Оберіть наступну дію:",
+        #     reply_markup=admin_vote_kb()
+        # )
+
+        # await db.set_current_question_index(session_code, current_question_index + 1)
+        # await state.set_state("voting")
     else:
         if message.from_user.id == admin_id:
             await message.answer(
                 "Не всі проголосували. Ви можете дочекатися або завершити голосування вручну.",
                 reply_markup=force_end_vote_kb()
             )
+            await state.set_state("proposer_entry")
 
 
-@admin_router.message(StateFilter("voting"))
-@admin_router.message(F.text == "Завершити опитування по поточному питанню")
-async def force_end_vote(message: types.Message, state: FSMContext, db: Database):
+# @admin_router.message(StateFilter("proposer_entry"))
+# async def set_proposer_name(message: types.Message, state: FSMContext, db: Database):
+#
+
+
+@admin_router.message(StateFilter("proposer_entry"))
+async def force_end_vote_and_set_proposed_entry(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
-
     session_code = session_data.get("session_code")
     current_question_index = session_data.get("current_question_index", 0)
     agenda = session_data.get("agenda", [])
@@ -312,41 +501,69 @@ async def force_end_vote(message: types.Message, state: FSMContext, db: Database
         return
 
     current_question = agenda[current_question_index]
-
     admin_id = await db.get_admin_id(session_code)
 
-    vote_results = await db.get_vote_results(session_code, current_question)
-    count_participants = await db.count_of_participants(session_code)
-    vote_results['Не голосували'] = count_participants - sum(vote_results.values())
-    results_text = "\n".join(
-        [f"<b>{key}</b>: {value}" for key, value in vote_results.items()]
-    )
+    current_question_index = await db.get_current_question_index(session_code)
 
-    decision = "Не ухвалено"
-    if int(vote_results['За']) * 2 > count_participants:
-        decision = "Ухвалено"
+    if current_question_index is None:
+        await message.answer("Номер питання не був знайденим")
+        return
 
-    # Відправляємо результати всім учасникам
-    participants = await db.get_session_participants(session_code)
-    for participant_id in participants:
+    proposer_name = message.text.strip() if message.text else ''
+
+    if message.text.strip() == "Завершити опитування по поточному питанню":
+        vote_results = await db.get_vote_results(session_code, current_question)
+        count_participants = await db.count_of_participants(session_code)
+        vote_results['Не голосували'] = count_participants - sum(vote_results.values())
+        results_text = "\n".join(
+            [f"<b>{key}</b>: {value}" for key, value in vote_results.items()]
+        )
+
+        decision = "Не ухвалено"
+        if int(vote_results['За']) * 2 > count_participants:
+            decision = "Ухвалено"
+
+        # Відправляємо результати всім учасникам
+        participants = await db.get_session_participants(session_code)
+        for participant_id in participants:
+            await message.bot.send_message(
+                chat_id=participant_id,
+                text=f"Голосування завершено для питання:\n<b>{current_question_index + 1}. {current_question}</b>\n\nРезультати:\n{results_text}\n\nРішення було <b>{decision}</b>",
+                parse_mode="HTML",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+
         await message.bot.send_message(
-            chat_id=participant_id,
-            text=f"Голосування завершено для питання:\n<b>{current_question_index + 1}. {current_question}</b>\n\nРезультати:\n{results_text}\n\nРішення було <b>{decision}</b>",
-            parse_mode="HTML",
+            chat_id=admin_id,
+            text=f"Введіть Прізвище та Ім'я людини, яка запропонувала це питання:",
             reply_markup=types.ReplyKeyboardRemove()
         )
 
-    await message.bot.send_message(
-        chat_id=admin_id,
-        text=f"Оберіть наступну дію:",
-        reply_markup=admin_vote_kb()
-    )
-    await db.set_current_question_index(session_code, current_question_index + 1)
-    await state.set_state("admin_control")
+    else:
+        logging.info(f"Зайшло в функцію встановлення імені для питання")
+
+        agenda = await db.get_session_agenda(session_code)
+
+        if not agenda or current_question_index >= len(agenda):
+            await message.answer("Помилка: Питання/agenda не знайдені.")
+            return
+
+        await db.set_agenda_item_proposer(session_code, current_question, proposer_name)
+        await message.answer("Ім'я збережено✅.")
+
+        logging.info(f"Відповідальна особа {proposer_name} записана для питання {current_question}")
+
+        await message.bot.send_message(
+            chat_id=admin_id,
+            text=f"Оберіть наступну дію:",
+            reply_markup=admin_vote_kb()
+        )
+
+        await db.set_current_question_index(session_code, current_question_index + 1)
+        await state.set_state('voting')
 
 
-@admin_router.message(StateFilter("voting"))
-@admin_router.message(F.text == "Голосувати за наступне питання")
+@admin_router.message(StateFilter("voting"), F.text == "Голосувати за наступне питання")
 async def next_question(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
 
@@ -354,10 +571,25 @@ async def next_question(message: types.Message, state: FSMContext, db: Database)
     current_question_index = session_data.get("current_question_index", 0)
     agenda = session_data.get("agenda", [])
 
+    print(session_data)
     if current_question_index + 1 >= len(agenda):
+        admin_id = message.from_user.id
+        youth_council_info = await db.get_youth_council_info(admin_id)
+
+        text = ""
+        if youth_council_info:
+            council_info = youth_council_info
+            text = (f"Інформація про МР:\n"
+                    f"Назва: {council_info.name}\n"
+                    f"Місто: {council_info.city}\n"
+                    f"Регіон: {council_info.region}\n"
+                    f"Голова: {council_info.head}\n"
+                    f"Секретар: {council_info.secretary}\n\n"
+                    )
+
         await message.answer(
-            "Усі питання розглянуті. Ви можете завершити сесію.",
-            reply_markup=admin_vote_kb()
+            f"{text}Усі питання розглянуті. Ви можете завершити сесію.",
+            reply_markup=admin_end_vote_kb()
         )
         return
 
@@ -378,49 +610,156 @@ async def next_question(message: types.Message, state: FSMContext, db: Database)
     await state.update_data(current_question_index=next_question_index)
 
 
-from aiogram.types import FSInputFile
-
-@admin_router.message(F.text == "❌ Завершити сесію")
-async def end_session(message: types.Message, state: FSMContext, db: Database):
+@admin_router.message(F.text == "📝 Заповнити родові відмінки імен")
+async def start_filling_name_cases(message: types.Message, state: FSMContext, db: Database):
+    user_id = message.from_user.id
     session_data = await state.get_data()
-    session_name = session_data.get('session_name')
-
     session_code = session_data.get("session_code")
+
     if not session_code:
         await message.answer("Помилка: сесія не знайдена.")
         return
 
-    # Завершуємо сесію та отримуємо результати
-    results = await db.end_session(session_code)
+    proposed_names = await db.get_proposed_names_by_admin(session_code, user_id)
 
+    if not proposed_names:
+        await message.answer("Ви не вводили імен під час цієї сесії.")
+        return
+
+    await state.update_data(proposed_names=proposed_names, current_index=0)
+    await process_next_name(message, state, db)
+
+async def process_next_name(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    proposed_names = session_data.get("proposed_names", [])
+    current_index = session_data.get("current_index", 0)
+
+    session_code = session_data.get("session_code")
+    session_name = session_data.get("session_name")
+
+    if current_index >= len(proposed_names):
+        await state.clear()
+        await state.update_data(session_code=session_code, session_name=session_name)
+        await message.answer("Усі імена перевірені та оновлені!\n\nВертаємося до закінчення голосування", reply_markup=admin_end_vote_kb())
+        return
+
+    current_name = proposed_names[current_index]
+    existing_name = await db.get_name_rv(message.from_user.id, current_name)
+
+    if existing_name and existing_name.name_rv:
+        await state.update_data(current_name=current_name)
+        await message.answer(
+            f"Ім'я <b>{current_name}</b> вже має родовий відмінок: <b>{existing_name.name_rv}</b>\n\n"
+            "Якщо бажаєте залишити цей варіант, то нажміть <b>Пропустити</b>, якщо ні, то напишіть Ваш варіант:",
+            parse_mode="HTML",
+            reply_markup=set_rv_name()
+        )
+    else:
+        await state.update_data(current_name=current_name)
+        await message.answer(
+            f"Ім'я <b>{current_name}</b> не має родового відмінку.\n\n"
+            "Введіть родовий відмінок або натисніть <b>'Пропустити'</b>, щоб не пропустити це ім'я.",
+            parse_mode="HTML",
+            reply_markup=set_rv_name()
+        )
+
+    await state.set_state("waiting_for_rv")
+
+@admin_router.message(StateFilter("waiting_for_rv"), F.text == "Пропустити")
+async def keep_existing_rv(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    current_index = session_data.get("current_index", 0)
+
+    await state.update_data(current_index=current_index + 1)
+    await process_next_name(message, state, db)
+
+@admin_router.message(StateFilter("waiting_for_rv"))
+async def update_name_rv(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    current_name = session_data.get("current_name")
+    current_index = session_data.get("current_index", 0)
+
+    await db.update_name_rv(message.from_user.id, current_name, message.text.strip())
+    await message.answer(f"Родовий відмінок для імені <b>{current_name}</b> тепер <b>{message.text.strip()}</b>!", parse_mode="HTML")
+
+    await state.update_data(current_index=current_index + 1)
+    await process_next_name(message, state, db)
+
+
+@admin_router.message(F.text == "❌ Завершити сесію")
+async def initiate_end_session(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    session_name = session_data.get('session_name')
+    session_code = session_data.get("session_code")
+
+    if not session_code:
+        await message.answer("Помилка: сесія не знайдена.")
+        return
+
+    admin_id = message.from_user.id
+    youth_council_info = await db.get_youth_council_info(admin_id)
+
+    if not youth_council_info:
+        await message.answer(
+            "У Вас не заповнена інформація про Молодіжну раду. \nПочинаємо заповнення! \n\nВведіть назву МР:")
+        await state.set_state(AdminStates.youth_council_name)
+        return
+
+    await state.update_data(session_code=session_code, session_name=session_name)
+    await message.answer("Введіть номер засідання/протоколу:")
+    await state.set_state("waiting_for_protocol_number")
+
+
+@admin_router.message(StateFilter("waiting_for_protocol_number"))
+async def ask_for_session_type(message: types.Message, state: FSMContext):
+    protocol_number = message.text.strip()
+    await state.update_data(protocol_number=protocol_number)
+
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="Чергове")],
+            [types.KeyboardButton(text="Позачергова")],
+            [types.KeyboardButton(text="Інший варіант")]
+        ], resize_keyboard=True
+    )
+    await message.answer("Введіть тип засідання (можна власний варіант, просто напишіть його):", reply_markup=keyboard)
+    await state.set_state("waiting_for_session_type")
+
+
+@admin_router.message(StateFilter("waiting_for_session_type"))
+async def finalize_session_details(message: types.Message, state: FSMContext, db: Database):
+    session_data = await state.get_data()
+    session_code = session_data.get("session_code")
+    session_name = session_data.get("session_name")
+    protocol_number = session_data.get("protocol_number")
+    session_type = message.text.strip()
+
+    await db.update_session_details(session_code, protocol_number, session_type)
+    await complete_session(message, session_code, session_name, state, db)
+
+
+async def complete_session(message: types.Message, session_code: str, session_name: str, state: FSMContext,
+                           db: Database):
+    results = await db.end_session(session_code)
     total_participants = await db.count_of_participants(session_code)
-    # Форматуємо результати
     results_text = "\n".join([
         f"<b>{index + 1}. {question}</b>\nЗа: {votes['for']}, Проти: {votes['against']}, Утримались: {votes['abstain']}, Не голосували: {votes['not_voted']}\nЦе рішення було <b>{'Прийнято' if votes['for'] * 2 > total_participants else 'Не прийнято'}</b>"
         for index, (question, votes) in enumerate(results.items())
     ])
 
     try:
-        # Генеруємо документи
         protocol_path = await generate_protocol(session_code, db)
         attendance_list_path = await generate_attendance_list_full(session_code, session_name, db)
 
         protocol_file = FSInputFile(protocol_path)
-        await message.answer_document(
-            document=protocol_file
-        )
+        await message.answer_document(document=protocol_file)
 
-        # Відправляємо список присутніх
         attendance_file = FSInputFile(attendance_list_path)
-        await message.answer_document(
-            document=attendance_file
-        )
-
+        await message.answer_document(document=attendance_file)
     except Exception as e:
         logging.error(f"Помилка під час генерації документів: {e}")
         await message.answer(f"Сталася помилка під час генерації документів: {str(e)}")
 
-    # Надсилаємо результати голосування
     participants = await db.get_session_participants(session_code)
     for participant_id in participants:
         await message.bot.send_message(

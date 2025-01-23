@@ -8,3 +8,10 @@ docx~=0.2.4
 asyncpg~=0.30.0
 openai~=1.59.6
 flask~=3.1.0
+spacy~=3.8.3
+pymorphy2~=0.9.1
+pymorphy2-dicts-uk==2.4.1.1.1460299261
+pymorphy3-dicts-uk==2.4.1.1.1663094765
+uk_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/uk_core_news_sm-3.8.0/uk_core_news_sm-3.8.0-py3-none-any.whl#sha256=d20adb50b42c0dcfdedf4994dabcb96789a64983a9ab560d0c6c38a59e8efb58
+typer~=0.15.1
+pypdf2~=3.0.1
