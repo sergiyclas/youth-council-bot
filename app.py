@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiohttp.helpers import TOKEN
 from flask import Flask, jsonify, request
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -46,7 +47,7 @@ db = Database(session_factory=async_session)
 
 # Ініціалізація Telegram-бота
 bot = Bot(
-    token=TELEGRAM_TOKEN_TEST,
+    token=TELEGRAM_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 
