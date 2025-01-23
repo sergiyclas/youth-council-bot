@@ -1,11 +1,7 @@
 import spacy
-import pymorphy2
 
 # Завантажуємо українську NLP-модель
 nlp = spacy.load("uk_core_news_sm")
-
-# Ініціалізуємо морфологічний аналізатор для корекції відмінків
-morph = pymorphy2.MorphAnalyzer(lang="uk")
 
 # Словник відповідностей (іменник → інфінітив)
 conversion_dict = {
@@ -22,16 +18,25 @@ conversion_dict = {
     "цифровізацію": "цифровізувати"
 }
 
+# Простий словник корекції відмінків (лише найпоширеніші випадки)
+case_correction = {
+    "питання": "питання",
+    "рішення": "рішення",
+    "програму": "програма",
+    "програмі": "програма",
+    "діяльності": "діяльність",
+    "розвитку": "розвиток",
+    "затвердження": "затвердити",
+    "завершення": "завершити",
+}
 
-def correct_case(word, target_case="nomn"):
+
+def correct_case_manual(word, target_case="nomn"):
     """
-    Виправляє відмінок слова на потрібний (наприклад, називний - "nomn").
+    Простий метод виправлення відмінків без використання pymorphy2.
+    Просто замінює слова, якщо вони є в нашому словнику.
     """
-    parsed = morph.parse(word)
-    for p in parsed:
-        if target_case in p.tag:
-            return p.normal_form  # Якщо слово вже в потрібному відмінку, повертаємо його
-    return parsed[0].inflect({target_case}).word if parsed[0].inflect({target_case}) else word
+    return case_correction.get(word.lower(), word)
 
 
 def convert_to_infinitive(sentence):
@@ -56,7 +61,7 @@ def convert_to_infinitive(sentence):
             idx = words.index(infinitive) + 1  # Наступне слово
             if idx < len(words):
                 next_word = words[idx]
-                corrected_word = correct_case(next_word, "nomn")  # Перетворюємо у називний відмінок
+                corrected_word = correct_case_manual(next_word, "nomn")  # Перетворюємо у називний відмінок
                 words[idx] = corrected_word  # Замінюємо
                 new_sentence = " ".join(words)  # Збираємо назад
 

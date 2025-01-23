@@ -62,7 +62,7 @@ dp.include_router(pdf_router)
 async def create_tables():
     """Створює таблиці у базі даних."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     logging.info("Таблиці створено.")
