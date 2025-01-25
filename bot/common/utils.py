@@ -261,8 +261,6 @@ async def generate_attendance_list_full(session_code, db):
                     run.font.name = "Times New Roman"
                     run.font.size = Pt(14)
 
-    # Зберігаємо файл
-    os.makedirs("attendance", exist_ok=True)
     document.save(file_path)
 
     return file_path

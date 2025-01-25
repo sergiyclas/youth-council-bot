@@ -8,11 +8,8 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/common/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/common/utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bot/database/database_postgres.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/database/database_postgres.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/handlers/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/admin.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot/handlers/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/common.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bot/handlers/participant.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/handlers/participant.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bot/keyboards/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot/keyboards/admin.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

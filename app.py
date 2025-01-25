@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-from bot.common.commands import set_bot_commands, reset_bot_commands
+from bot.common.commands import set_bot_commands
 from bot.handlers.admin import admin_router
 from bot.handlers.common import common_router, pdf_router
 from bot.handlers.participant import participant_router

@@ -101,8 +101,9 @@ async def help_command(message: types.Message):
 async def start_pdf_merge(message: types.Message, state: FSMContext):
     pdf_files[message.from_user.id] = []
     await state.set_state(PDFMergeStates.uploading)
-    await message.answer("Скиньте PDF-файл. Ви можете завантажити до 5 файлів. Натисніть 'Об'єднати PDF', коли завершите.",
-                         reply_markup=pdf_kb())
+    await message.answer(
+        "Скиньте PDF-файл. Ви можете завантажити до 5 файлів. Натисніть 'Об'єднати PDF', коли завершите.",
+        reply_markup=pdf_kb())
 
 
 @pdf_router.message(PDFMergeStates.uploading, F.document)
@@ -111,10 +112,6 @@ async def receive_pdf(message: types.Message, state: FSMContext, bot: Bot):
 
     if user_id not in pdf_files:
         await message.answer("Будь ласка, спочатку введіть команду /merge_pdf.")
-        return
-
-    if message.document is None:
-        await message.answer("Будь ласка, надішліть саме PDF-файл.")
         return
 
     if len(pdf_files[user_id]) >= 5:
@@ -132,7 +129,8 @@ async def receive_pdf(message: types.Message, state: FSMContext, bot: Bot):
     await bot.download_file(file.file_path, file_path)
 
     pdf_files[user_id].append(file_path)
-    await message.answer(f"Файл {message.document.file_name} додано. Ви можете додати ще {5 - len(pdf_files[user_id])} файлів.")
+    await message.answer(
+        f"Файл {message.document.file_name} додано. Ви можете додати ще {5 - len(pdf_files[user_id])} файлів.")
 
 
 @pdf_router.message(PDFMergeStates.uploading, F.text == "Об'єднати PDF")
@@ -141,7 +139,8 @@ async def ask_for_pdf_name(message: types.Message, state: FSMContext):
 
     if user_id not in pdf_files or len(pdf_files[user_id]) == 0:
         await state.clear()
-        await message.answer("Ви не завантажили жодного PDF-файлу, тому результату нема.\n\nГарного дня", reply_markup=session_control_kb())
+        await message.answer("Ви не завантажили жодного PDF-файлу, тому результату нема.\n\nГарного дня",
+                             reply_markup=session_control_kb())
         return
 
     await state.set_state("waiting_for_pdf_name")
@@ -158,18 +157,31 @@ async def merge_pdfs_command(message: types.Message, state: FSMContext):
         return
 
     output_filename = f"{pdf_name}.pdf"
-    merger = PyPDF2.PdfMerger()
-    for pdf in pdf_files[user_id]:
-        merger.append(pdf)
-    merger.write(output_filename)
-    merger.close()
 
-    await message.answer_document(types.FSInputFile(output_filename))
-    await message.answer("Ваш PDF-файл об'єднано!\n\nУспішного використання!", reply_markup=common_kb())
+    try:
+        merger = PyPDF2.PdfMerger()
+        for pdf in pdf_files[user_id]:
+            merger.append(pdf)
+        merger.write(output_filename)
+        merger.close()
 
-    for pdf in pdf_files[user_id]:
-        os.remove(pdf)
-    os.remove(output_filename)
+        await message.answer_document(types.FSInputFile(output_filename))
+        await message.answer("Ваш PDF-файл об'єднано!\n\nУспішного використання!", reply_markup=common_kb())
+
+    except Exception as e:
+        await message.answer(f"⚠ Сталася помилка під час об'єднання PDF: {str(e)}")
+
+    # Видалення всіх PDF-файлів
+    try:
+        for pdf in pdf_files[user_id]:
+            if os.path.exists(pdf):
+                os.remove(pdf)
+        if os.path.exists(output_filename):
+            os.remove(output_filename)
+    except Exception as e:
+        logging.error(f"Помилка при видаленні файлів: {e}")
+
+    # Очищення списку файлів
     del pdf_files[user_id]
 
     await state.clear()

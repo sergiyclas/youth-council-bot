@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 
 from aiogram import Router, types, F
@@ -759,7 +760,6 @@ async def finalize_session_details(message: types.Message, state: FSMContext, db
     await db.update_session_details(session_code, protocol_number, session_type)
     await complete_session(message, session_code, session_name, state, db)
 
-
 async def complete_session(message: types.Message, session_code: str, session_name: str, state: FSMContext,
                            db: Database):
     results = await db.end_session(session_code)
@@ -778,6 +778,11 @@ async def complete_session(message: types.Message, session_code: str, session_na
 
         attendance_file = FSInputFile(attendance_list_path)
         await message.answer_document(document=attendance_file)
+
+        # Видалення файлів після відправки
+        os.remove(protocol_path)
+        os.remove(attendance_list_path)
+        logging.info(f"Файли {protocol_path} та {attendance_list_path} були видалені.")
     except Exception as e:
         logging.error(f"Помилка під час генерації документів: {e}")
         await message.answer(f"Сталася помилка під час генерації документів: {str(e)}")
@@ -795,6 +800,7 @@ async def complete_session(message: types.Message, session_code: str, session_na
         parse_mode="HTML", reply_markup=admin_menu_kb()
     )
     await state.clear()
+
 
 
 @admin_router.message(F.text == "Написати пост")
@@ -871,12 +877,14 @@ async def show_recent_sessions(message: types.Message, db: Database):
 
     await message.answer(response, parse_mode="HTML", reply_markup=admin_fea_kb())
 
+
 # ---- ЗАВАНТАЖЕННЯ СЕСІЇ ---- #
 @admin_router.message(AdminState.in_admin, Command("upload_session"))
 async def request_session_code(message: types.Message, state: FSMContext):
     """Запитує код сесії для завантаження"""
     await message.answer("✍ Введіть код засідання:", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(AdminState.waiting_for_session_code)
+
 
 @admin_router.message(AdminState.waiting_for_session_code)
 async def fetch_session_details(message: types.Message, state: FSMContext, db: Database):
@@ -917,6 +925,11 @@ async def fetch_session_details(message: types.Message, state: FSMContext, db: D
 
         await message.answer_document(document=protocol_file, caption="📜 Протокол сесії")
         await message.answer_document(document=attendance_file, caption="📝 Відвідуваність")
+
+        # Видалення файлів після відправки
+        os.remove(protocol_path)
+        os.remove(attendance_list_path)
+
     except Exception as e:
         logging.error(f"Помилка при генерації документів: {e}")
         await message.answer(f"⚠ Сталася помилка під час генерації документів: {str(e)}", reply_markup=admin_fea_kb())
