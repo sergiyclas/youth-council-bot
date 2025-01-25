@@ -1,10 +1,10 @@
 import logging
 
 from aiogram import BaseMiddleware
-from sqlalchemy import Column, BigInteger, String, ForeignKey, Text, Boolean, delete, func, Integer
+from sqlalchemy import Column, BigInteger, String, ForeignKey, Text, Boolean, delete, Integer, DateTime
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.future import select
-from sqlalchemy.sql import expression
+from sqlalchemy.sql import expression, func
 from typing import Callable, Dict, Any
 
 Base = declarative_base()
@@ -14,13 +14,14 @@ class Session(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(Integer, unique=True, nullable=False)
-    name = Column(String(255), nullable=False)
-    password = Column(String(255), nullable=False)
+    name = Column(String(100), nullable=False)
+    password = Column(String(21), nullable=False)
     admin_id = Column(BigInteger, nullable=False)
     is_active = Column(Boolean, server_default=expression.true(), nullable=False)
     current_question_index = Column(Integer, default=0)
-    session_type = Column(String(50), nullable=True)
+    session_type = Column(String(30), nullable=True)
     number = Column(String(10), nullable=True)
+    date = Column(DateTime, default=func.now())
 
     agenda_items = relationship("AgendaItem", back_populates="session")
     participants = relationship("Participant", back_populates="session", cascade="all, delete-orphan")
@@ -32,7 +33,7 @@ class AgendaItem(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     description = Column(Text, nullable=False)
     position = Column(Integer, nullable=False)
-    proposed = Column(String(255), nullable=True)
+    proposed = Column(String(50), nullable=True)
     manual = Column(String(255), nullable=True)
 
     session = relationship("Session", back_populates="agenda_items")
@@ -44,7 +45,7 @@ class Vote(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     agenda_item_id = Column(Integer, ForeignKey("agenda_items.id"), nullable=False)
     user_id = Column(BigInteger, nullable=False)
-    vote = Column(String(10), nullable=False)  # "За", "Проти", "Утримаюсь"
+    vote = Column(String(10), nullable=False)
 
     agenda_item = relationship("AgendaItem", back_populates="votes")
 
@@ -54,7 +55,7 @@ class Participant(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     user_id = Column(BigInteger, nullable=False)
-    name = Column(String(255), nullable=False)
+    name = Column(String(50), nullable=False)
 
     session = relationship("Session", back_populates="participants")
 
@@ -64,18 +65,26 @@ class YouthCouncilInfo(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=False)
     name = Column(String(255), nullable=False)
-    city = Column(String(255), nullable=False)
+    city = Column(String(50), nullable=False)
     region = Column(String(255), nullable=False)
-    head = Column(String(255), nullable=False)
-    secretary = Column(String(255), nullable=False)
+    head = Column(String(50), nullable=False)
+    secretary = Column(String(50), nullable=False)
 
 class Name(Base):
     __tablename__ = 'names'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=False)
-    name = Column(String(255), nullable=False)
-    name_rv = Column(String(255), nullable=True)
+    name = Column(String(50), nullable=False)
+    name_rv = Column(String(60), nullable=True)
+
+class Logging(Base):
+    __tablename__ = 'logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)
+    name = Column(String(100), nullable=False)
+
 
 # Database Utility Functions
 class Database:
@@ -358,13 +367,6 @@ class Database:
             )
             return [row[0] for row in result.fetchall()]  # Повертаємо лише user_id
 
-    async def get_session_by_code(self, session_code):
-        async with self.session_factory() as session:
-            result = await session.execute(
-                select(Session).where(Session.code == int(session_code))
-            )
-            return result.scalar_one_or_none()
-
     async def get_current_question_index(self, session_code):
         async with self.session_factory() as session:
             result = await session.execute(
@@ -427,59 +429,56 @@ class Database:
             await session.commit()
 
     async def get_all_vote_results(self, session_code: int) -> dict:
+        """Отримує всі результати голосування по сесії."""
         async with self.session_factory() as session:
             result = await session.execute(
                 select(Session.id).where(Session.code == int(session_code))
             )
             session_id = result.scalar_one_or_none()
+
             if not session_id:
-                raise ValueError("Сесія з таким кодом не знайдена.")
+                raise ValueError("❌ Сесія з таким кодом не знайдена.")
 
+            # Отримуємо всі питання порядку денного
             agenda_result = await session.execute(
-                select(AgendaItem.id, AgendaItem.description).where(AgendaItem.session_id == session_id)
+                select(AgendaItem).where(AgendaItem.session_id == session_id)
             )
-            agenda_items = agenda_result.all()
+            agenda_items = agenda_result.scalars().all()
 
+            # Отримуємо список учасників сесії
             participants_result = await session.execute(
-                select(Participant).where(Participant.session_id == session_id)
+                select(Participant.user_id).where(Participant.session_id == session_id)
             )
             participants = participants_result.scalars().all()
             total_participants = len(participants)
 
             voting_results = {}
-            for agenda_item_id, description in agenda_items:
-                votes_result = await session.execute(
-                    select(Vote.vote, func.count(Vote.id))
-                    .where(Vote.agenda_item_id == agenda_item_id)
-                    .group_by(Vote.vote)
-                )
-                votes = votes_result.all()
 
-                results = {"for": 0, "against": 0, "abstain": 0}
+            for item in agenda_items:
+                # Отримуємо всі голоси по конкретному питанню
+                votes_result = await session.execute(
+                    select(Vote.user_id, Vote.vote).where(Vote.agenda_item_id == item.id)
+                )
+                votes = votes_result.fetchall()
+
+                vote_counts = {"for": 0, "against": 0, "abstain": 0}
                 voted_users = set()
 
-                for vote, count in votes:
-                    if vote[0] == "За":
-                        results["for"] = count
-                    elif vote[0] == "Проти":
-                        results["against"] = count
-                    elif vote[0] == "Утримаюсь":
-                        results["abstain"] = count
-                    voted_users.add(vote[0])
+                for user_id, vote in votes:
+                    if vote == "За":
+                        vote_counts["for"] += 1
+                    elif vote == "Проти":
+                        vote_counts["against"] += 1
+                    elif vote == "Утримаюсь":
+                        vote_counts["abstain"] += 1
+                    voted_users.add(user_id)
 
                 not_voted = total_participants - len(voted_users)
-                results["not_voted"] = not_voted
+                vote_counts["not_voted"] = max(0, not_voted)  # Запобігає від'ємним значенням
 
-                voting_results[description] = results
+                voting_results[item.description] = vote_counts
 
             return voting_results
-
-    async def get_youth_council_info(self, user_id):
-        async with self.session_factory() as session:
-            result = await session.execute(
-                select(YouthCouncilInfo).where(YouthCouncilInfo.user_id == user_id)
-            )
-            return result.scalar_one_or_none()
 
     async def save_youth_council_info(self, user_id, name, city, region, head, secretary):
         async with self.session_factory() as session:
@@ -652,8 +651,183 @@ class Database:
                 await session.commit()
                 logging.info(f"Сесія {session_code} успішно видалена.")
 
+    async def get_last_sessions(self, limit: int = 10):
+        """Отримує останні N сесій."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Session).order_by(Session.date.desc()).limit(limit)
+            )
+            return result.scalars().all()
+
+    async def get_session_by_code(self, session_code):
+        """Отримує сесію за її кодом, уникаючи проблеми з типами."""
+        async with self.session_factory() as session:
+            try:
+                session_code = int(session_code)  # Приведення до int
+            except ValueError:
+                return None  # Якщо не вдалося перетворити, повертаємо None
+
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            return result.scalar_one_or_none()
+
+    ### --- AGENDA ITEMS FUNCTIONS --- ###
+    async def get_agenda_items(self, session_id: int):
+        """Отримує всі пункти порядку денного для сесії."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(AgendaItem).where(AgendaItem.session_id == session_id)
+            )
+            return result.scalars().all()
+
+    async def delete_agenda_items(self, session_id: int):
+        """Видаляє всі пункти порядку денного для сесії."""
+        async with self.session_factory() as session:
+            await session.execute(
+                delete(AgendaItem).where(AgendaItem.session_id == session_id)
+            )
+            await session.commit()
+
+    ### --- VOTE FUNCTIONS --- ###
+    async def get_votes_for_session(self, session_id: int):
+        """Отримує всі голоси для сесії."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Vote).where(Vote.agenda_item_id == session_id)
+            )
+            return result.scalars().all()
+
+    async def delete_votes_for_session(self, session_id: int):
+        """Видаляє всі голоси для сесії."""
+        async with self.session_factory() as session:
+            await session.execute(
+                delete(Vote).where(Vote.agenda_item_id == session_id)
+            )
+            await session.commit()
+
+    ### --- PARTICIPANT FUNCTIONS --- ###
+    async def get_participants_for_session(self, session_id: int):
+        """Отримує всіх учасників сесії."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Participant).where(Participant.session_id == session_id)
+            )
+            return result.scalars().all()
+
+    async def get_participant_count(self, session_id: int):
+        """Отримує кількість учасників сесії."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(func.count()).where(Participant.session_id == session_id)
+            )
+            return result.scalar()
+
+    async def delete_participants_for_session(self, session_id: int):
+        """Видаляє всіх учасників сесії."""
+        async with self.session_factory() as session:
+            await session.execute(
+                delete(Participant).where(Participant.session_id == session_id)
+            )
+            await session.commit()
+
+    ### --- YOUTH COUNCIL INFO FUNCTIONS --- ###
+    async def get_youth_council_info(self, admin_id: int):
+        """Отримує інформацію про Молодіжну раду за ID адміна."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(YouthCouncilInfo).where(YouthCouncilInfo.user_id == admin_id)
+            )
+            return result.scalar_one_or_none()
+
+    ### --- USER STATISTICS FUNCTIONS --- ###
+    async def get_user_statistics(self, user_id: int):
+        """Отримує статистику користувача, якщо він існує, з найчастішим іменем та топ-3 молодіжними радами."""
+        async with self.session_factory() as session:
+            # Перевіряємо, чи користувач існує в БД
+            user_exists = await session.execute(
+                select(Participant.user_id).where(Participant.user_id == user_id)
+            )
+            if not user_exists.fetchone():
+                return None  # Користувача немає в базі
+
+            # Отримуємо ім'я, яке найчастіше зустрічається у таблиці `participants`
+            most_common_name_query = await session.execute(
+                select(Participant.name, func.count(Participant.name))
+                .where(Participant.user_id == user_id)
+                .group_by(Participant.name)
+                .order_by(func.count(Participant.name).desc())  # Сортуємо за частотою
+                .limit(1)
+            )
+            most_common_name_result = most_common_name_query.fetchone()
+            user_name = most_common_name_result[0] if most_common_name_result else "Невідомий"
+
+            # Отримуємо кількість сесій, у яких користувач брав участь
+            participation_count_query = await session.execute(
+                select(func.count()).where(Participant.user_id == user_id)
+            )
+            participation_count = participation_count_query.scalar()
+
+            # Отримуємо кількість разів, коли користувач був адміном
+            admin_count_query = await session.execute(
+                select(func.count()).where(Session.admin_id == user_id)
+            )
+            admin_count = admin_count_query.scalar()
+
+            # Отримуємо топ-3 молодіжні ради, в яких користувач найчастіше виступав
+            youth_council_query = await session.execute(
+                select(YouthCouncilInfo.name, func.count(YouthCouncilInfo.name))
+                .join(Session, YouthCouncilInfo.user_id == Session.admin_id)  # Приєднуємо до сесій
+                .join(Participant, Session.id == Participant.session_id)  # Приєднуємо учасників
+                .where(Participant.user_id == user_id)
+                .group_by(YouthCouncilInfo.name)
+                .order_by(func.count(YouthCouncilInfo.name).desc())  # Сортуємо за кількістю
+                .limit(3)
+            )
+            youth_councils = youth_council_query.fetchall()
+
+            # Формуємо список топ-3 молодіжних рад
+            top_youth_councils = "\n".join(
+                [f"{index + 1}. {council[0]} ({council[1]} разів)" for index, council in enumerate(youth_councils)]
+            ) if youth_councils else "Немає даних"
+
+            return {
+                "user_id": user_id,
+                "name": user_name,
+                "participation_count": participation_count,
+                "admin_count": admin_count,
+                "top_youth_councils": top_youth_councils
+            }
+
+    async def get_all_users(self, limit: int = 30):
+        """Отримує список всіх користувачів (обмежено 30), використовуючи найчастіше зустрічаючеся ім'я."""
+        async with self.session_factory() as session:
+            # Отримуємо користувачів разом із найчастішим іменем
+            result = await session.execute(
+                select(
+                    Participant.user_id,
+                    Participant.name,
+                    func.count(Participant.name)
+                )
+                .group_by(Participant.user_id, Participant.name)
+                .order_by(Participant.user_id, func.count(Participant.name).desc())
+                # Сортуємо по user_id і найбільшому count
+            )
+
+            # Обробляємо дані, щоб залишити лише найчастіше ім'я для кожного user_id
+            user_data = {}
+            for user_id, name, count in result.fetchall():
+                if user_id not in user_data:  # Додаємо перший запис, бо він уже відсортований по найбільшій кількості
+                    user_data[user_id] = name
+
+            # Конвертуємо в список (обмежуємо `limit`)
+            users_list = list(user_data.items())[:limit]
+
+            return users_list
+
+    ### --- FULL SESSION CLEANUP FUNCTION --- ###
     async def delete_related_data(self, session_code: int):
-        """Видаляє всі пов'язані з сесією дані (порядок денний, голоси тощо)"""
+        """Видаляє всі пов'язані з сесією дані (порядок денний, голоси, учасників)."""
         async with self.session_factory() as session:
             # Отримуємо сесію
             result = await session.execute(
@@ -662,18 +836,91 @@ class Database:
             session_obj = result.scalar_one_or_none()
 
             if session_obj:
-                # Видаляємо всі елементи порядку денного
+                # Видаляємо всі пов'язані записи
                 await session.execute(
                     delete(AgendaItem).where(AgendaItem.session_id == session_obj.id)
                 )
-
-                # Видаляємо всі голоси, якщо є така таблиця
                 await session.execute(
-                    delete(Vote).where(Vote.session_id == session_obj.id)
+                    delete(Vote).where(Vote.agenda_item_id == session_obj.id)
+                )
+                await session.execute(
+                    delete(Participant).where(Participant.session_id == session_obj.id)
                 )
 
                 await session.commit()
                 logging.info(f"Всі пов'язані дані для сесії {session_code} видалені.")
+
+    async def get_admin_name(self, admin_id: int):
+        """Отримує ім'я адміна, яке найчастіше зустрічається серед учасників його сесій."""
+        async with self.session_factory() as session:
+            # Перевіряємо, чи адмін є учасником хоча б однієї сесії
+            admin_exists = await session.execute(
+                select(Participant.user_id).where(Participant.user_id == admin_id).limit(1)
+                # Запобігає MultipleResultsFound
+            )
+            if not admin_exists.scalar_one_or_none():
+                return "Невідомий адмін"
+
+            # Отримуємо ім'я, яке найчастіше зустрічається у таблиці `participants`
+            most_common_name_query = await session.execute(
+                select(Participant.name, func.count(Participant.name))
+                .where(Participant.user_id == admin_id)
+                .group_by(Participant.name)
+                .order_by(func.count(Participant.name).desc())  # Сортуємо за частотою
+                .limit(1)
+            )
+            most_common_name_result = most_common_name_query.fetchone()
+
+            return most_common_name_result[0] if most_common_name_result else "Невідомий адмін"
+
+    async def get_questions_count(self, session_id: int):
+        """Підраховує кількість питань у сесії"""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(func.count()).where(AgendaItem.session_id == session_id)
+            )
+            return result.scalar() or 0
+
+    async def check_session(self, session_code: int):
+        """Перевіряє, чи існує сесія і чи вона активна."""
+        async with self.session_factory() as session:
+            try:
+                session_code = int(session_code)  # Приведення до int (щоб уникнути помилок)
+            except ValueError:
+                return None  # Якщо код некоректний
+
+            result = await session.execute(
+                select(Session)
+                .where(Session.code == session_code)
+                .where(Session.is_active == True)  # Перевіряємо, що сесія активна
+            )
+            session_obj = result.scalar_one_or_none()
+
+            return session_obj  # Повертаємо сесію або None, якщо її нема / не активна
+
+    async def close_session(self, session_code: int):
+        """Закриває сесію (ставить is_active = False)."""
+        async with self.session_factory() as session:
+            try:
+                session_code = int(session_code)  # Перетворюємо у число (щоб уникнути помилок)
+            except ValueError:
+                return None  # Якщо код некоректний
+
+            # Отримуємо сесію
+            result = await session.execute(
+                select(Session).where(Session.code == session_code)
+            )
+            session_obj = result.scalar_one_or_none()
+
+            if not session_obj:
+                return None  # Сесія не знайдена
+
+            if not session_obj.is_active:
+                return "Сесія вже закрита!"  # Якщо сесія вже неактивна
+
+            # Закриваємо сесію
+            session_obj.is_active = False
+            await session.commit()
 
 
 class DatabaseMiddleware(BaseMiddleware):

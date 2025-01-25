@@ -15,7 +15,7 @@ def session_control_resized_kb():
     keyboard = ReplyKeyboardBuilder()
     keyboard.add(
         KeyboardButton(text="🔄 Змінити порядок денний"),
-        KeyboardButton(text="✅ Почати голосування по питаннях плану"),
+        KeyboardButton(text="✅ Почати голосування по питаннях порядку денного"),
         KeyboardButton(text="⚙️ Налаштувати інформацію про МР"),
         KeyboardButton(text="ℹ️ Інформація про сесію"),
         KeyboardButton(text="❌ Завершити сесію")
@@ -29,7 +29,7 @@ def session_control_kb():
 
     # Додаємо кнопки по команді
     keyboard.add(
-        KeyboardButton(text="✅ Почати голосування по питаннях плану"),
+        KeyboardButton(text="✅ Почати голосування по питаннях порядку денного"),
     )
 
     keyboard.row(
@@ -110,3 +110,30 @@ def set_rv_name():
         KeyboardButton(text="Пропустити"),
     )
     return keyboard.adjust(1).as_markup(resize_keyboard=True)
+
+def set_session_type_kb():
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(
+            KeyboardButton(text="Чергового"),
+            KeyboardButton(text="Позачергового"),
+    )
+
+    return keyboard.adjust(1).as_markup(resize_keyboard=True)
+
+def admin_fea_kb():
+    keyboard = ReplyKeyboardBuilder()
+
+    keyboard.row(
+        KeyboardButton(text="/show_recent"),
+        KeyboardButton(text="/upload_session")
+    )
+
+    keyboard.row(
+        KeyboardButton(text="/info_user"),
+        KeyboardButton(text="/id_all_users")
+    )
+
+    keyboard.add(
+        KeyboardButton(text="/exit_admin"),
+    )
+    return keyboard.adjust(2).as_markup(resize_keyboard=True)

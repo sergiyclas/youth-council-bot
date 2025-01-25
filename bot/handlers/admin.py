@@ -10,7 +10,7 @@ from aiogram.types import FSInputFile
 from bot.common.ai import generate_post, client
 from bot.common.utils import generate_protocol, generate_attendance_list_full
 from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb, admin_end_vote_kb, \
-    set_rv_name, yes_no_kb
+    set_rv_name, yes_no_kb, set_session_type_kb, admin_fea_kb
 from random import randint
 from bot.keyboards.common import vote_kb, common_kb
 
@@ -21,11 +21,10 @@ if str(OPTION) == 'MySQL':
 else:
     from bot.database.database_postgres import Database
 
-ignored_texts = ["🔄 Змінити порядок денний", "✅ Почати голосування по питаннях плану", "❌ Завершити сесію",
-                     "⚙️ Налаштувати інформацію про МР", "ℹ️ Інформація про сесію", "/help", "/post", "/join",
-                 "/create_session", "/leave", "/merge_pdf", "/info"]
+ALLOWED_ADMINS = {1014099963}
 
 admin_router = Router()
+
 
 class AdminStates(StatesGroup):
     session_name = State()
@@ -38,6 +37,11 @@ class AdminStates(StatesGroup):
     youth_council_region = State()
     youth_council_head = State()
     youth_council_secretary = State()
+
+class AdminState(StatesGroup):
+    in_admin = State()
+    waiting_for_session_code = State()
+    waiting_for_user_id = State()
 
 
 @admin_router.message(Command("start"))
@@ -62,6 +66,10 @@ async def create_session(message: types.Message, state: FSMContext):
 async def set_session_name(message: types.Message, state: FSMContext):
     session_name = message.text.strip()
 
+    ignored_texts = ["🔄 Змінити порядок денний", "✅ Почати голосування по питаннях порядку денного", "❌ Завершити сесію",
+                     "⚙️ Налаштувати інформацію про МР", "ℹ️ Інформація про сесію", "/help", "/post", "/join",
+                     "/create_session", "/leave", "/merge_pdf", "/info"]
+
     # Перевіряємо, чи текст є текстом кнопки
     if session_name in ignored_texts:
         await message.answer("Будь ласка, введіть назву сесії, а не натискайте кнопки.")
@@ -76,6 +84,11 @@ async def set_session_name(message: types.Message, state: FSMContext):
 @admin_router.message(AdminStates.session_password)
 async def set_session_password(message: types.Message, state: FSMContext, db: Database):
     session_password = message.text.strip()
+
+    if len(session_password) > 20:
+        await message.answer("Пароль занадто довгий, максимум 20 символів")
+        return
+
     logging.info(f"Отримано пароль сесії: {session_password}")
     await state.update_data(session_password=session_password)
 
@@ -144,7 +157,7 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
 
     # Тексти кнопок, які потрібно ігнорувати
     ignored_texts = [
-        "🔄 Змінити порядок денний", "✅ Почати голосування по питаннях плану",
+        "🔄 Змінити порядок денний", "✅ Почати голосування по питаннях порядку денного",
         "❌ Завершити сесію", "⚙️ Налаштувати інформацію про МР", "ℹ️ Інформація про сесію"
     ]
 
@@ -152,8 +165,6 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
     if message.text in ignored_texts:
         await message.answer("Будь ласка, введіть новий порядок денний, а не натискайте кнопки.")
         return
-
-    print(session_data)
 
     # Перевіряємо, чи є session_name і session_code у стані
     session_name = session_data.get('session_name')
@@ -211,7 +222,6 @@ async def set_agenda(message: types.Message, state: FSMContext, db: Database):
 
 @admin_router.message(F.text == "⚙️ Налаштувати інформацію про МР")
 async def set_information_about_youth_council(message: types.Message, state: FSMContext, db: Database):
-    session_data = await state.get_data()
     admin_id = message.from_user.id
 
     result = await db.get_youth_council_info(admin_id)
@@ -239,18 +249,16 @@ async def restart_youth_council_info(message: types.Message, state: FSMContext):
 
 
 @admin_router.message(F.text == "Ні")
-async def cancel_youth_council_update(message: types.Message, state: FSMContext):
+async def cancel_youth_council_update(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
 
     session_name = session_data.get('session_name')
     session_code = session_data.get('session_code')
 
+    current_question_index = await db.get_current_question_index(session_code)
+    agenda = await db.get_session_agenda(session_code)
 
-    current_question_index = session_data.get("current_question_index", 0)
-    agenda = session_data.get("agenda", [])
-    print(agenda)
-    print(current_question_index)
-    if current_question_index < len(agenda):
+    if len(agenda) > current_question_index + 1:
         await message.answer("Налаштування інформації про МР скасовано.", reply_markup=session_control_kb())
         await state.clear()
         await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
@@ -311,11 +319,10 @@ async def set_youth_council_secretary(message: types.Message, state: FSMContext,
         secretary=message.text.strip()
     )
 
-    current_question_index = session_data.get("current_question_index", 0)
-    agenda = session_data.get("agenda", [])
-    print(current_question_index)
+    current_question_index = await db.get_current_question_index(session_code)
+    agenda = await db.get_session_agenda(session_code)
 
-    if current_question_index < len(agenda):
+    if len(agenda) > current_question_index + 1:
         await message.answer("Інформація про МР збережена!", reply_markup=session_control_kb())
         await state.clear()
         await state.update_data(session_code=session_code, session_name=session_name, agenda=agenda, current_question_index=current_question_index)
@@ -340,7 +347,6 @@ async def change_agenda(message: types.Message, state: FSMContext):
     session_code = session_data.get('session_code')
 
     if not session_name or not session_code:
-        print(session_data)
         await message.answer("Помилка: сесія не знайдена. Будь ласка, створіть нову сесію.")
         logging.error("Сесія не знайдена у стані")
         return
@@ -350,7 +356,7 @@ async def change_agenda(message: types.Message, state: FSMContext):
     await state.set_state(AdminStates.session_agenda)
 
 
-@admin_router.message(F.text == "✅ Почати голосування по питаннях плану")
+@admin_router.message(F.text == "✅ Почати голосування по питаннях порядку денного")
 async def start_voting(message: types.Message, state: FSMContext, db: Database):
     session_data = await state.get_data()
 
@@ -370,6 +376,8 @@ async def start_voting(message: types.Message, state: FSMContext, db: Database):
 
     # Починаємо голосування за перше питання
     current_question = agenda[0]
+
+    await db.close_session(session_code)
 
     # Надсилаємо питання всім учасникам сесії
     participants = await db.get_session_participants(session_code)
@@ -553,11 +561,33 @@ async def force_end_vote_and_set_proposed_entry(message: types.Message, state: F
 
         logging.info(f"Відповідальна особа {proposer_name} записана для питання {current_question}")
 
-        await message.bot.send_message(
-            chat_id=admin_id,
-            text=f"Оберіть наступну дію:",
-            reply_markup=admin_vote_kb()
-        )
+        if len(agenda) > current_question_index + 1:
+            new_question = agenda[current_question_index + 1]
+            await message.bot.send_message(
+                chat_id=admin_id,
+                text=f"Голосуємо за наступне питання порядку денного?\n\n<b>{current_question_index + 2}. {new_question}</b>\n\nОберіть дію: ",
+                reply_markup=admin_vote_kb()
+            )
+
+        else:
+            youth_council_info = await db.get_youth_council_info(admin_id)
+
+            text = ""
+            if youth_council_info:
+                council_info = youth_council_info
+                text = (f"Інформація про МР:\n"
+                        f"Назва: {council_info.name}\n"
+                        f"Місто: {council_info.city}\n"
+                        f"Регіон: {council_info.region}\n"
+                        f"Голова: {council_info.head}\n"
+                        f"Секретар: {council_info.secretary}\n\n"
+                        )
+
+            await message.bot.send_message(
+                chat_id=admin_id,
+                text=f"{text}Усі питання розглянуті. Ви можете завершити сесію.",
+                reply_markup=admin_end_vote_kb()
+            )
 
         await db.set_current_question_index(session_code, current_question_index + 1)
         await state.set_state('voting')
@@ -571,7 +601,6 @@ async def next_question(message: types.Message, state: FSMContext, db: Database)
     current_question_index = session_data.get("current_question_index", 0)
     agenda = session_data.get("agenda", [])
 
-    print(session_data)
     if current_question_index + 1 >= len(agenda):
         admin_id = message.from_user.id
         youth_council_info = await db.get_youth_council_info(admin_id)
@@ -715,14 +744,7 @@ async def ask_for_session_type(message: types.Message, state: FSMContext):
     protocol_number = message.text.strip()
     await state.update_data(protocol_number=protocol_number)
 
-    keyboard = types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="Чергове")],
-            [types.KeyboardButton(text="Позачергова")],
-            [types.KeyboardButton(text="Інший варіант")]
-        ], resize_keyboard=True
-    )
-    await message.answer("Введіть тип засідання (можна власний варіант, просто напишіть його):", reply_markup=keyboard)
+    await message.answer("Введіть тип засідання (можна власний варіант, просто напишіть його, тільки у форматі, що відповідає на питання 'якого?'):", reply_markup=set_session_type_kb())
     await state.set_state("waiting_for_session_type")
 
 
@@ -749,7 +771,7 @@ async def complete_session(message: types.Message, session_code: str, session_na
 
     try:
         protocol_path = await generate_protocol(session_code, db)
-        attendance_list_path = await generate_attendance_list_full(session_code, session_name, db)
+        attendance_list_path = await generate_attendance_list_full(session_code, db)
 
         protocol_file = FSInputFile(protocol_path)
         await message.answer_document(document=protocol_file)
@@ -787,14 +809,13 @@ async def create_session(message: types.Message, state: FSMContext):
     await state.set_state("waiting")
 
 @admin_router.message(StateFilter("waiting"))
-async def send_generated_post(message: types.Message, state: FSMContext, db: Database):
+async def send_generated_post(message: types.Message, state: FSMContext):
     text = message.text
     logging.info(f"Згенеровано {text}")
 
     await message.reply("Генерую пост, зачекайте...")
 
     post = await generate_post(client, text)
-    print(post)
 
     if post:
         await message.reply(f"{post}")
@@ -802,3 +823,173 @@ async def send_generated_post(message: types.Message, state: FSMContext, db: Dat
         await message.reply("На жаль, не вдалося згенерувати пост. Спробуйте пізніше.")
 
     await state.clear()
+
+
+@admin_router.message(Command("admin_fea"))
+async def enter_admin_panel(message: types.Message, state: FSMContext):
+    """Перевіряє доступ і переводить в стан адмінки"""
+    if message.from_user.id not in ALLOWED_ADMINS:
+        await message.answer("Not allowed", reply_markup=common_kb())
+        return
+
+    await state.set_state(AdminState.in_admin)
+    await message.answer("✅ Ви увійшли в адмін-панель. Виберіть команду:", reply_markup=admin_fea_kb())
+
+# ---- ВИХІД З АДМІН-ПАНЕЛІ ---- #
+@admin_router.message(F.text == "/exit_admin")
+async def exit_admin_panel(message: types.Message, state: FSMContext):
+    """Вихід з адмін-панелі"""
+    await state.clear()
+    await message.answer("🚪 Ви вийшли з адмін-панелі.", reply_markup=common_kb())
+
+# ---- ПОКАЗ ОСТАННІХ 10 СЕСІЙ ---- #
+@admin_router.message(AdminState.in_admin, Command("show_recent"))
+async def show_recent_sessions(message: types.Message, db: Database):
+    """Відображає статистику останніх 10 сесій"""
+    sessions = await db.get_last_sessions(10)
+
+    if not sessions:
+        await message.answer("❌ Немає останніх сесій.", reply_markup=admin_fea_kb())
+        return
+
+    response = "<b>📊 Останні 10 сесій:</b>\n"
+    for index, session in enumerate(sessions):
+        admin_name = await db.get_admin_name(session.admin_id)
+        participants_count = await db.get_participant_count(session.id)
+        questions_count = await db.get_questions_count(session.id)
+        youth_info = await db.get_youth_council_info(session.admin_id)
+
+        response += (
+            f"\n<b>📌{index + 1}. Сесія:</b> {session.name} (Код: {session.code})"
+            f"\n<b>👤 Адмін:</b> {admin_name} (ID: {session.admin_id})"
+            f"\n<b>❓ Питань розглянуто:</b> {questions_count}"
+            f"\n<b>👥 Учасників:</b> {participants_count}"
+            f"\n<b>🏛 Молодіжна рада:</b> {youth_info.name if youth_info else 'Немає'}"
+            f"\n<b>🧑‍⚖ Голова:</b> {youth_info.head if youth_info else 'Немає'}"
+            f"\n<b>📅 Дата:</b> {session.date}\n\n"
+        )
+
+    await message.answer(response, parse_mode="HTML", reply_markup=admin_fea_kb())
+
+# ---- ЗАВАНТАЖЕННЯ СЕСІЇ ---- #
+@admin_router.message(AdminState.in_admin, Command("upload_session"))
+async def request_session_code(message: types.Message, state: FSMContext):
+    """Запитує код сесії для завантаження"""
+    await message.answer("✍ Введіть код засідання:", reply_markup=types.ReplyKeyboardRemove())
+    await state.set_state(AdminState.waiting_for_session_code)
+
+@admin_router.message(AdminState.waiting_for_session_code)
+async def fetch_session_details(message: types.Message, state: FSMContext, db: Database):
+    """Отримує повну інформацію про сесію та генерує протокол і відвідуваність"""
+    try:
+        session_code = int(message.text.strip())  # Примусове приведення до int
+    except ValueError:
+        await message.answer("❌ Код сесії має бути числом!", reply_markup=admin_fea_kb())
+        await state.set_state(AdminState.in_admin)
+        return
+
+    session = await db.get_session_by_code(session_code)
+
+    if not session:
+        await message.answer("❌ Сесію не знайдено.", reply_markup=admin_fea_kb())
+        await state.set_state(AdminState.in_admin)
+        return
+
+    # Отримання пов'язаних даних
+    admin_name = await db.get_admin_name(session.admin_id)
+    participants_count = await db.get_participant_count(session.id)
+    questions_count = await db.get_questions_count(session.id)
+    youth_info = await db.get_youth_council_info(session.admin_id)
+    agenda_items = await db.get_agenda_items(session.id)
+
+    agenda_text = "\n".join([
+        f"<b>{index + 1}. {item.description}</b> (Запропоновано: {item.proposed})"
+        for index, item in enumerate(agenda_items)
+    ]) if agenda_items else "❌ Порядок денний відсутній."
+
+    # Генерація документів
+    try:
+        protocol_path = await generate_protocol(session_code, db)
+        attendance_list_path = await generate_attendance_list_full(session_code, db)
+
+        protocol_file = FSInputFile(protocol_path)
+        attendance_file = FSInputFile(attendance_list_path)
+
+        await message.answer_document(document=protocol_file, caption="📜 Протокол сесії")
+        await message.answer_document(document=attendance_file, caption="📝 Відвідуваність")
+    except Exception as e:
+        logging.error(f"Помилка при генерації документів: {e}")
+        await message.answer(f"⚠ Сталася помилка під час генерації документів: {str(e)}", reply_markup=admin_fea_kb())
+
+    # Відправлення повної інформації про сесію
+    response = (
+        f"<b>📌 Сесія:</b> {session.name} (Код: {session.code})\n"
+        f"<b>📅 Дата:</b> {session.date}\n"
+        f"<b>🔢 Номер сесії:</b> {session.number or 'Немає'}\n"
+        f"<b>🛠 Тип сесії:</b> {session.session_type or 'Не вказано'}\n"
+        f"<b>👤 Адмін:</b> {admin_name} (ID: {session.admin_id})\n"
+        f"<b>📜 Питань розглянуто:</b> {questions_count}\n"
+        f"<b>👥 Кількість учасників:</b> {participants_count}\n"
+        f"<b>🏛 Молодіжна рада:</b> {youth_info.name if youth_info else 'Немає'}\n"
+        f"<b>📍 Регіон:</b> {youth_info.region if youth_info else 'Немає'}\n"
+        f"<b>🌆 Місто:</b> {youth_info.city if youth_info else 'Немає'}\n"
+        f"<b>🧑‍⚖ Голова:</b> {youth_info.head if youth_info else 'Немає'}\n"
+        f"<b>📋 Секретар:</b> {youth_info.secretary if youth_info else 'Немає'}\n\n"
+        f"<b>📋 Порядок денний:</b>\n{agenda_text}"
+    )
+
+    await message.answer(response, parse_mode="HTML", reply_markup=admin_fea_kb())
+
+    await state.set_state(AdminState.in_admin)
+
+
+# ---- ІНФОРМАЦІЯ ПРО КОРИСТУВАЧА ---- #
+@admin_router.message(AdminState.in_admin, Command("info_user"))
+async def request_user_id(message: types.Message, state: FSMContext):
+    """Запитує ID користувача"""
+    await message.answer("✍ Введіть ID користувача:", reply_markup=types.ReplyKeyboardRemove())
+    await state.set_state(AdminState.waiting_for_user_id)
+
+@admin_router.message(AdminState.waiting_for_user_id)
+async def fetch_user_info(message: types.Message, state: FSMContext, db: Database):
+    """Виводить статистику по користувачу"""
+    try:
+        user_id = int(message.text.strip())
+
+    except ValueError:
+        await message.answer("❌ Код сесії має бути числом!", reply_markup=admin_fea_kb())
+        await state.set_state(AdminState.in_admin)
+        return
+
+    user_stats = await db.get_user_statistics(user_id)
+
+    if not user_stats:
+        await message.answer("❌ Користувач не знайдений.", reply_markup=admin_fea_kb())
+        await state.set_state(AdminState.in_admin)
+        return
+
+    response = (
+        f"<b>👤 Користувач:</b> {user_stats['name']} (ID: {user_stats['user_id']})\n"
+        f"<b>🎭 Участь у сесіях:</b> {user_stats['participation_count']}\n"
+        f"<b>🛠 Адміністрував сесії:</b> {user_stats['admin_count']}\n\n"
+        f"<b>🏛 Топ-3 молодіжні ради:</b>\n{user_stats['top_youth_councils']}"
+    )
+
+    await message.answer(response, parse_mode="HTML", reply_markup=admin_fea_kb())
+    await state.set_state(AdminState.in_admin)
+
+# ---- ВИВІД ВСІХ КОРИСТУВАЧІВ (МАКС 30) ---- #
+@admin_router.message(Command("id_all_users"))
+async def list_all_users(message: types.Message, db: Database):
+    """Виводить список до 30 користувачів"""
+    users = await db.get_all_users(limit=30)
+
+    if not users:
+        await message.answer("❌ Користувачів не знайдено.", reply_markup=admin_fea_kb())
+        return
+
+    response = "<b>📜 Список користувачів:</b>\n"
+    for user_id, name in users:
+        response += f"🆔 ID: {user_id} | 🏷 Ім'я: {name}\n"
+
+    await message.answer(response, parse_mode="HTML", reply_markup=admin_fea_kb())

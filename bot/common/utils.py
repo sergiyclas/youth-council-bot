@@ -38,7 +38,6 @@ async def generate_protocol(session_code, db):
     if not session:
         raise ValueError("Сесія не знайдена.")
 
-    session_name = session.name
     admin_id = session.admin_id
     participants = await db.get_session_participants_with_names(session_code) or []
     agenda = await db.get_session_agenda(session_code) or []
@@ -59,7 +58,11 @@ async def generate_protocol(session_code, db):
     number = protocol_info.get("number", "____")
     session_type = protocol_info.get('session_type', "______________")
 
-    date = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    try:
+        date = session.date.strftime("%Y_%m_%d_%H_%M")
+    except Exception as e:
+        date = session.date
+
     file_name = f"{date}_Протокол_{number}.docx"
     file_path = os.path.join("protocols", file_name)
 
@@ -77,8 +80,8 @@ async def generate_protocol(session_code, db):
     title_run.bold = True
     title_run.font.size = Pt(14)
 
-    current_date = datetime.now()
-    date_for_title = f"{current_date.day} {months_uk[current_date.month]} {current_date.year}"
+    date_obj = datetime.strptime(date, "%Y_%m_%d_%H_%M")
+    date_for_title = f"{date_obj.day} {months_uk[date_obj.month]} {date_obj.year}"
 
     font_size = 14
     max_width = 113 - len(city)
@@ -116,7 +119,7 @@ async def generate_protocol(session_code, db):
         run = paragraph.add_run(f"{i}. По {questions[i]} питанню порядку денного слухали")
         run.bold = True
 
-        proposed_name = await db.get_proposed_name(session_code, question) or "___________________________"
+        proposed_name = await db.get_proposed_name(session_code, question) or "_________________"
         proposed_rv = await db.get_name_rv(admin_id, proposed_name)
         proposer_text = proposed_rv.name_rv if proposed_rv and proposed_rv.name_rv else proposed_name
 
@@ -165,12 +168,11 @@ async def generate_protocol(session_code, db):
     return file_path
 
 
-async def generate_attendance_list_full(session_code, session_name, db):
+async def generate_attendance_list_full(session_code, db):
     """
     Генерує анкету присутності для сесії.
 
     :param session_code: Код сесії.
-    :param session_name: Назва сесії.
     :param db: Об'єкт бази даних.
     :return: Шлях до збереженого файлу анкети.
     """
@@ -178,7 +180,6 @@ async def generate_attendance_list_full(session_code, session_name, db):
     if not session:
         raise ValueError("Сесія не знайдена.")
 
-    session_name = session.name
     admin_id = session.admin_id
     participants = await db.get_session_participants_with_names(session_code) or []
 
@@ -194,7 +195,11 @@ async def generate_attendance_list_full(session_code, session_name, db):
     session_type = protocol_info.get('session_type', "______________")
 
     # Формуємо ім'я файлу додатка
-    date = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    try:
+        date = session.date.strftime("%Y_%m_%d_%H_%M")
+    except Exception as e:
+        date = session.date
+
     file_name = f"{date}_Додаток_присутності_{number}.docx"
     file_path = os.path.join("protocols", file_name)
 
@@ -214,11 +219,11 @@ async def generate_attendance_list_full(session_code, session_name, db):
     title = document.add_paragraph()
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 
-    current_date = datetime.now()
-    date_for_title = f"{current_date.day} {months_uk[current_date.month]} {current_date.year}"
+    date_obj = datetime.strptime(date, "%Y_%m_%d_%H_%M")
+    date_for_title = f"{date_obj.day} {months_uk[date_obj.month]} {date_obj.year}"
 
     title_run = title.add_run(
-        f"Реєстраційна анкета на {session_type} засідання №{number}, {date_for_title} року\n"
+        f"Реєстраційна анкета {session_type} засідання №{number}, {date_for_title} року\n"
         f"{council_name} {region}"
     )
     title_run.font.name = "Times New Roman"

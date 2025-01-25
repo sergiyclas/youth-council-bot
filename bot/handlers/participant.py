@@ -33,22 +33,24 @@ async def join_session(message: types.Message, state: FSMContext):
     await state.set_state(ParticipantStates.entering_session_code)
     await message.answer("Введіть код сесії:")
 
+
 @participant_router.message(StateFilter(ParticipantStates.entering_session_code))
 async def handle_session_code(message: types.Message, state: FSMContext, db: Database):
     """
     Учасник вводить код сесії.
     """
-    session_code = message.text.strip()
-    session = await db.get_session_by_code(session_code)
+    session_code = int(message.text.strip())
+    session = await db.check_session(session_code)
 
     if not session:
-        await message.answer("Сесія з таким кодом не знайдена. Спробуйте ще раз.")
+        await message.answer("❌ Сесія з таким кодом не знайдена або вже неактивна. Спробуйте ще раз.")
         return
 
-    logging.info(f"Користувач {message.from_user.id} заходить до сесії {session_code}")
+    logging.info(f"✅ Користувач {message.from_user.id} заходить до сесії {session_code}")
     await state.update_data(session_code=session_code)
     await state.set_state(ParticipantStates.entering_session_password)
-    await message.answer("Введіть пароль сесії:")
+    await message.answer("🔒 Введіть пароль сесії:")
+
 
 @participant_router.message(StateFilter(ParticipantStates.entering_session_password))
 async def handle_session_password(message: types.Message, state: FSMContext, db: Database):

@@ -8,7 +8,7 @@ from aiogram.fsm.state import StatesGroup, State
 import os
 
 
-from bot.keyboards.admin import admin_menu_kb, session_control_resized_kb, session_control_kb
+from bot.keyboards.admin import session_control_kb
 from bot.keyboards.common import common_kb, pdf_kb
 
 from config import OPTION
@@ -165,7 +165,7 @@ async def merge_pdfs_command(message: types.Message, state: FSMContext):
     merger.close()
 
     await message.answer_document(types.FSInputFile(output_filename))
-    await message.answer("Ваш PDF-файл об'єднано!\n\nУспішного використання!", reply_markup=session_control_kb())
+    await message.answer("Ваш PDF-файл об'єднано!\n\nУспішного використання!", reply_markup=common_kb())
 
     for pdf in pdf_files[user_id]:
         os.remove(pdf)
