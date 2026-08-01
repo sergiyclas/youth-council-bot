@@ -1,11 +1,36 @@
-/venv/
-venv
-/venv
-
-.idea
-.idea/
-.env
-
+# Byte-compiled / optimized
 __pycache__/
+*.py[cod]
+*$py.class
 
-/protocols
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data
+*.db
+*.sqlite3
+.gradio/
+
+protocols/
