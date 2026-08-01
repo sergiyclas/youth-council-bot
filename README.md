@@ -2,13 +2,14 @@
 
 # 🏛 Youth Council Bot
 
-### A Telegram bot that runs council meetings end to end: agenda, voting, and the signed protocol
+### A Telegram bot that runs a council meeting from the agenda to the signed protocol
 
-Built for the Youth Council of the Rava-Ruska city council. The bot collects the agenda, runs the
-vote, and produces the meeting protocol as a DOCX file with the wording the paperwork requires.
+The admin opens a session, members join with a code and a password, everyone votes on each
+agenda item separately, and the bot produces the meeting protocol and the attendance appendix
+as DOCX files. Built for the Youth Council of the Rava-Ruska city council.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-![Language](https://img.shields.io/badge/Language-Ukrainian-005BBB)
+![Language](https://img.shields.io/badge/Interface-Ukrainian-005BBB)
 
 </div>
 
@@ -31,32 +32,107 @@ vote, and produces the meeting protocol as a DOCX file with the wording the pape
 **Storage and documents**<br>
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![python-docx](https://img.shields.io/badge/python--docx-DOCX%20protocols-2B579A?logo=microsoftword&logoColor=white)
+![python-docx](https://img.shields.io/badge/python--docx-DOCX%20output-2B579A?logo=microsoftword&logoColor=white)
 
 </div>
 
 ---
 
+## 🎯 What problem it solves
+
+Running a council meeting on paper means one person tracking who is present, who voted how on
+each item, and then rewriting all of it into a protocol that has to follow a fixed format.
+The bot does the tracking during the meeting and emits the finished documents at the end.
+
+---
+
 ## 🎬 Demo
 
-The Ukrainian NLP layer runs without Telegram or an API key:
+The whole flow runs locally without Telegram, a database or an API key:
 
 ```bash
 python demo.py
 ```
 
 ```
-Agenda item                                      -> Protocol wording
-----------------------------------------------------------------------------------------------
-Про затвердження програми розвитку молоді        -> затвердити програми розвитку молоді
-Про створення робочої групи                      -> створити робочої групи
-Про припинення повноважень члена ради            -> припинити повноважень члена ради
-Про оголошення конкурсу проєктів                 -> оголосити конкурсу проєктів
-Про розгляд звернення мешканців                  -> розглянути звернення мешканців
+==============================================================================
+1. The admin creates a session
+==============================================================================
+   Session code: 228782
+   Password:     ofwwcgun
+   These are shared with the council members, who join from their own Telegram.
+
+==============================================================================
+2. Members join
+==============================================================================
+   joined: Коваль О. І.
+   joined: Мельник Д. С.
+   joined: Ткаченко І. П.
+   joined: Бондар Л. В.
+   joined: Шевчук Н. О.
+   5 participants registered for the attendance appendix.
+
+==============================================================================
+3. Voting, one agenda item at a time
+==============================================================================
+   Item 1: Про затвердження програми розвитку молоді
+      for 5 · against 0 · abstained 0 · did not vote 0
+   Item 2: Про створення робочої групи
+      for 4 · against 1 · abstained 0 · did not vote 0
+   Item 3: Про припинення повноважень члена ради
+      for 3 · against 0 · abstained 2 · did not vote 0
+
+==============================================================================
+4. The protocol is written in the wording the paperwork requires
+==============================================================================
+   Agenda item (as submitted)                      Protocol wording (decision)
+   ---------------------------------------------------------------------------
+   Про затвердження програми розвитку молоді       затвердити програми розвитку молоді
+   Про створення робочої групи                     створити робочої групи
+   Про припинення повноважень члена ради           припинити повноважень члена ради
 ```
 
-Agenda items are written as nominalisations, while a protocol has to state a decision in the
-infinitive. The bot rewrites them automatically instead of asking the secretary to do it by hand.
+---
+
+## ✨ Features
+
+### 🗳 Session-based voting
+
+- Admin creates a session; the bot generates a **join code** and a **password**
+- Members enter both in their own Telegram and register under their name
+- Voting runs **item by item** — the next question opens only when the current one closes
+- Each member votes *for*, *against* or *abstains*; the bot records who has already voted
+- The admin can close a vote early and see the running tallies
+
+### 📄 Document generation
+
+- **Протокол №N** — decisions and vote tallies for every agenda item, in the required layout
+  (Times New Roman 14, fixed margins, numbered items, "Ухвалили" sections)
+- **Додаток присутності** — the attendance appendix as a signable table
+- Both are sent straight into the chat as DOCX files when the session ends
+
+### 🔤 Ukrainian NLP for the protocol wording
+
+- Agenda items arrive as nominalisations: *"Про затвердження програми"*
+- A protocol has to state the decision as a verb: *"затвердити програму"*
+- spaCy's `uk_core_news_sm` finds the nominalisation and the bot rewrites it
+- Participant names are stored in the genitive case so they read correctly in the document
+
+### 🤖 AI post generation
+
+- Given the details of an event, an OpenAI-backed prompt writes a social media post
+- The prompt encodes the council's established style: official tone, up to 700 characters,
+  at most three emoji, no hashtags
+
+### 🗄 Council profile and history
+
+- Council name, city, region, chair and secretary are stored once and reused in every protocol
+- Sessions are numbered, so protocol numbering continues across meetings
+
+### ⚙️ Runs on either database
+
+- The same async SQLAlchemy layer works on SQLite locally and PostgreSQL via asyncpg in production
+- Selected by a single environment variable
 
 ---
 
@@ -66,7 +142,7 @@ infinitive. The bot rewrites them automatically instead of asking the secretary 
 
 - Python 3.12+
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- An OpenAI API key (only for the post-generation feature)
+- An OpenAI API key — only needed for the post-generation feature
 
 ### Run
 
@@ -79,38 +155,8 @@ cp .env.example .env          # fill in the tokens
 python app.py
 ```
 
-The Ukrainian spaCy model is installed from the wheel listed in `requirements.txt`.
+The Ukrainian spaCy model is installed from the wheel pinned in `requirements.txt`.
 The app runs the bot and a small Flask service side by side.
-
----
-
-## ✨ Features
-
-### Runs the whole meeting
-
-An admin creates a session with a password, sets the agenda, and starts the vote. Participants join
-with that password, vote item by item, and the bot tracks who voted for what.
-
-### Produces the protocol, not just the numbers
-
-When the vote ends, the bot fills a DOCX template with the decisions, the vote tallies and the
-participant list, in the wording the council's paperwork requires.
-
-### Ukrainian NLP for correct wording
-
-The agenda is written as "Про затвердження ..."; a protocol needs "затвердити ...". The bot uses
-spaCy's Ukrainian model to detect the nominalisation and rewrite it, and stores the declined forms
-of participants' names so they read correctly in the document.
-
-### Generates social media posts
-
-Given the details of an event, an OpenAI-backed prompt produces a post in the council's established
-style: official tone, a length limit, and at most three emoji.
-
-### Works on either database
-
-The same async SQLAlchemy layer runs on SQLite for local use or PostgreSQL through asyncpg in
-production, selected by an environment variable.
 
 ---
 
@@ -118,15 +164,15 @@ production, selected by an environment variable.
 
 ```mermaid
 flowchart LR
-    A([Admin]) -->|creates session, sets agenda| B[aiogram bot]
-    P([Participants]) -->|join and vote| B
-    B --> FSM[FSM state machine]
+    A([Admin]) -->|create session, set agenda| B[aiogram bot]
+    P([Members]) -->|code and password, vote| B
+    B --> FSM[FSM conversation state]
     B --> DB[(SQLite / PostgreSQL)]
     B --> NLP[spaCy uk_core_news_sm]
     B --> AI[OpenAI post generation]
-    NLP --> DOC[DOCX protocol]
-    DB --> DOC
-    DOC --> A
+    DB --> DOC[python-docx]
+    NLP --> DOC
+    DOC -->|protocol and attendance| A
 ```
 
 **Project layout**
@@ -138,9 +184,9 @@ bot/
 ├── database/     async SQLAlchemy models, SQLite and PostgreSQL backends
 ├── middlewares/  database session injection
 ├── filters/      role-based access checks
-└── common/       OpenAI prompts, the Ukrainian NLP converter, utilities
+└── common/       document generation, OpenAI prompts, Ukrainian NLP
 app.py            bot and Flask service entry point
-demo.py           NLP layer demo, no tokens required
+demo.py           full session flow, no tokens required
 ```
 
 ---
@@ -154,7 +200,8 @@ demo.py           NLP layer demo, no tokens required
 | `API_ID` / `API_HASH` | Telegram API credentials |
 | `OPENAI` | OpenAI API key for post generation |
 | `DATABASE_URL` | Async database URL |
-| `POSTGRESQL` | `true` to use PostgreSQL, otherwise SQLite |
+| `POSTGRESQL` | `true` for PostgreSQL, otherwise SQLite |
+| `ALLOWED_ADMINS` | Comma-separated Telegram user ids allowed to run admin commands |
 | `GOOGLE_DOCX_URL` | Protocol template document |
 | `OPTION` | `test` or `production` |
 
