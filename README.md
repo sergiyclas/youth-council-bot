@@ -54,43 +54,38 @@ The whole flow runs locally without Telegram, a database or an API key:
 python demo.py
 ```
 
-```
-==============================================================================
-1. The admin creates a session
-==============================================================================
-   Session code: 228782
-   Password:     ofwwcgun
-   These are shared with the council members, who join from their own Telegram.
+<div align="center">
 
-==============================================================================
-2. Members join
-==============================================================================
-   joined: Коваль О. І.
-   joined: Мельник Д. С.
-   joined: Ткаченко І. П.
-   joined: Бондар Л. В.
-   joined: Шевчук Н. О.
-   5 participants registered for the attendance appendix.
+![Session](docs/bot-01-session.png)
 
-==============================================================================
-3. Voting, one agenda item at a time
-==============================================================================
-   Item 1: Про затвердження програми розвитку молоді
-      for 5 · against 0 · abstained 0 · did not vote 0
-   Item 2: Про створення робочої групи
-      for 4 · against 1 · abstained 0 · did not vote 0
-   Item 3: Про припинення повноважень члена ради
-      for 3 · against 0 · abstained 2 · did not vote 0
+</div>
 
-==============================================================================
-4. The protocol is written in the wording the paperwork requires
-==============================================================================
-   Agenda item (as submitted)                      Protocol wording (decision)
-   ---------------------------------------------------------------------------
-   Про затвердження програми розвитку молоді       затвердити програми розвитку молоді
-   Про створення робочої групи                     створити робочої групи
-   Про припинення повноважень члена ради           припинити повноважень члена ради
-```
+<details>
+<summary><b>Every step of a meeting</b></summary>
+
+<br>
+
+**1. Session created, members join** — the bot generates a join code and a password,
+members enter both from their own Telegram and register under their name
+
+![Session](docs/bot-01-session.png)
+
+**2. Voting, item by item** — each agenda item is voted on separately; the next one opens
+only when the current vote closes
+
+![Voting](docs/bot-02-voting.png)
+
+**3. Protocol wording** — agenda items arrive as nominalisations, the protocol needs verbs;
+spaCy finds the nominalisation and the bot rewrites it
+
+![Wording](docs/bot-03-wording.png)
+
+**4. Documents emitted into the chat** — the numbered protocol with vote tallies, and the
+attendance appendix as a signable table
+
+![Documents](docs/bot-04-documents.png)
+
+</details>
 
 ---
 
