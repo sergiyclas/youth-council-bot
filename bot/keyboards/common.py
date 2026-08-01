@@ -1,5 +1,6 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+
 
 def common_kb():
     """Клавіатура для загальних дій."""

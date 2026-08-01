@@ -1,28 +1,35 @@
 import logging
 import os
 import re
+from random import randint
 
-from aiogram import Router, types, F
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
+from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile
 
-from bot.common.ai import generate_post, client
-from bot.common.utils import generate_protocol, generate_attendance_list_full
-from bot.keyboards.admin import admin_menu_kb, session_control_kb, admin_vote_kb, force_end_vote_kb, admin_end_vote_kb, \
-    set_rv_name, yes_no_kb, set_session_type_kb, admin_fea_kb
-from random import randint
-from bot.keyboards.common import vote_kb, common_kb
-
-from config import OPTION
+from bot.common.ai import client, generate_post
+from bot.common.utils import generate_attendance_list_full, generate_protocol
+from bot.keyboards.admin import (
+    admin_end_vote_kb,
+    admin_fea_kb,
+    admin_menu_kb,
+    admin_vote_kb,
+    force_end_vote_kb,
+    session_control_kb,
+    set_rv_name,
+    set_session_type_kb,
+    yes_no_kb,
+)
+from bot.keyboards.common import common_kb, vote_kb
+from config import ALLOWED_ADMINS, OPTION
 
 if str(OPTION) == 'MySQL':
     from bot.database.database import Database
 else:
     from bot.database.database_postgres import Database
 
-ALLOWED_ADMINS = {1014099963}
 
 admin_router = Router()
 
@@ -805,11 +812,12 @@ async def complete_session(message: types.Message, session_code: str, session_na
 
 @admin_router.message(F.text == "Написати пост")
 @admin_router.message(Command("post"))
-async def create_session(message: types.Message, state: FSMContext):
+async def create_post(message: types.Message, state: FSMContext):
     logging.info(f"Користувач {message.from_user.id} починає написання посту через ШІ")
 
-    if str(message.from_user.id) not in ['1014099963', '1762778352']:
+    if message.from_user.id not in ALLOWED_ADMINS:
         await message.answer("У вас нема прав")
+        return
 
     await message.answer("Вставте інформацію з якої слід згенерувати пост:")
     await state.set_state("waiting")

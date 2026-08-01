@@ -1,4 +1,5 @@
 from openai import OpenAI
+
 from config import OPENAI_KEY
 
 # Ініціалізація клієнта OpenAI

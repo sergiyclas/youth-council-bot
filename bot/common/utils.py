@@ -1,13 +1,14 @@
-from docx import Document
-from docx.enum.section import WD_ORIENTATION
-from docx.shared import Pt
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from docx.shared import Cm
 import os
 from datetime import datetime
 
-from bot.common.infinitiveConverter import convert_to_infinitive, capitalize_first_word
+from docx import Document
+from docx.enum.section import WD_ORIENTATION
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.shared import Cm, Pt
+
+from bot.common.infinitiveConverter import capitalize_first_word, convert_to_infinitive
 from bot.common.mini_libs import months_uk, questions
+
 
 def set_page_margins(document):
     """

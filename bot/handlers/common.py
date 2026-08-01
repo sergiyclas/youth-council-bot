@@ -1,16 +1,14 @@
 import logging
-import PyPDF2
-
-from aiogram import Router, types, F, Bot
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
 import os
 
+import PyPDF2
+from aiogram import Bot, F, Router, types
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from bot.keyboards.admin import session_control_kb
 from bot.keyboards.common import common_kb, pdf_kb
-
 from config import OPTION
 
 if str(OPTION) == 'MySQL':

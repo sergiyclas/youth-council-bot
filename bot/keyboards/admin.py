@@ -1,5 +1,6 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+
 
 def admin_menu_kb():
     """Клавіатура для вибору дій адміністратором."""

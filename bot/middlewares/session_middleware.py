@@ -1,6 +1,7 @@
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from aiogram.types import Message
 
+
 class SessionMiddleware(BaseMiddleware):
     def __init__(self, db):
         self.db = db

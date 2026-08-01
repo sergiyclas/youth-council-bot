@@ -1,11 +1,11 @@
 import logging
+from typing import Any, Callable, Dict
 
 from aiogram import BaseMiddleware
-from sqlalchemy import Column, BigInteger, String, ForeignKey, Text, Boolean, delete, Integer, DateTime
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, delete
 from sqlalchemy.future import select
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import expression, func
-from typing import Callable, Dict, Any
 
 Base = declarative_base()
 

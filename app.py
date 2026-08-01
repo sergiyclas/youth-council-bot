@@ -1,21 +1,21 @@
-import logging
 import asyncio
+import logging
 from multiprocessing import Process
 
+import asyncpg
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from flask import Flask, jsonify, request
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from bot.common.commands import set_bot_commands
 from bot.handlers.admin import admin_router
 from bot.handlers.common import common_router, pdf_router
 from bot.handlers.participant import participant_router
-from config import TELEGRAM_TOKEN, DATABASE_URL, POSTGRESQL, OPTION, TELEGRAM_TOKEN_TEST
-import asyncpg
+from config import DATABASE_URL, OPTION, POSTGRESQL, TELEGRAM_TOKEN, TELEGRAM_TOKEN_TEST
 
 # Налаштування логів
 logging.basicConfig(level=logging.INFO)
@@ -34,9 +34,9 @@ def get_params():
 
 if str(OPTION) == 'MySQL':
     DATABASE = DATABASE_URL
-    from bot.database.database import Database, Base, DatabaseMiddleware
+    from bot.database.database import Base, Database, DatabaseMiddleware
 else:
-    from bot.database.database_postgres import Database, Base, DatabaseMiddleware
+    from bot.database.database_postgres import Base, Database, DatabaseMiddleware
     DATABASE = "postgresql+asyncpg" + str(POSTGRESQL)
 
 engine = create_async_engine(DATABASE, future=True)

@@ -1,13 +1,12 @@
 import logging
 
-from aiogram import Router, types, F
-from aiogram.fsm.context import FSMContext
-from aiogram.filters.state import StateFilter
+from aiogram import F, Router, types
 from aiogram.filters import Command
+from aiogram.filters.state import StateFilter
+from aiogram.fsm.context import FSMContext
 
 from bot.keyboards.admin import admin_menu_kb, force_end_vote_kb
 from bot.keyboards.participant import participant_menu_kb
-
 from config import OPTION
 
 if str(OPTION) == 'MySQL':
