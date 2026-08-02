@@ -8,6 +8,7 @@ The admin opens a session, members join with a code and a password, everyone vot
 agenda item separately, and the bot produces the meeting protocol and the attendance appendix
 as DOCX files. Built for the Youth Council of the Rava-Ruska city council.
 
+[![Lint](https://github.com/sergiyclas/youth-council-bot/actions/workflows/lint.yml/badge.svg)](https://github.com/sergiyclas/youth-council-bot/actions/workflows/lint.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Language](https://img.shields.io/badge/Interface-Ukrainian-005BBB)
 
